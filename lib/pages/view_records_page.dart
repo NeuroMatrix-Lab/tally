@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import '../models/record.dart';
+import '../services/api_service.dart';
 
 class ViewRecordsPage extends StatefulWidget {
   final List<Record> records;
@@ -43,8 +44,18 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
   String? _selectedCategory;
   bool _isCalculateMode = false;
   final Set<String> _selectedRecordIds = {};
+  List<Record> _serverRecords = [];
+  bool _isLoading = false;
 
   List<Record> get _filteredRecords {
+    if (_isLoading) {
+      return [];
+    }
+
+    if (_serverRecords.isNotEmpty) {
+      return _serverRecords;
+    }
+
     var filtered = widget.records;
 
     if (_startDate != null && _endDate != null) {
@@ -230,7 +241,9 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
     if (picked != null && mounted) {
       setState(() {
         _startDate = picked;
+        _serverRecords = [];
       });
+      _searchFromServer();
     }
   }
 
@@ -245,7 +258,75 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
     if (picked != null && mounted) {
       setState(() {
         _endDate = picked;
+        _serverRecords = [];
       });
+      _searchFromServer();
+    }
+  }
+
+  Future<void> _searchFromServer() async {
+    if (_startDate == null || _endDate == null) {
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final startDate = DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
+      final endDate = DateTime(_endDate!.year, _endDate!.month, _endDate!.day, 23, 59, 59);
+      
+      final records = await ApiService.searchRecords(
+        startDate: startDate,
+        endDate: endDate,
+        category: _selectedCategory,
+        ledger: widget.defaultLedger,
+      );
+
+      if (mounted) {
+        setState(() {
+          _serverRecords = records;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error searching from server: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshFromServer() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final records = await ApiService.getRecentRecords(months: 3);
+
+      if (mounted) {
+        setState(() {
+          _serverRecords = records;
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已从服务器更新数据')),
+        );
+      }
+    } catch (e) {
+      print('Error refreshing from server: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新失败: $e')),
+        );
+      }
     }
   }
 
@@ -471,6 +552,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                   workContent: workContentController.text,
                   amount: amount,
                   category: categoryController.text,
+                  ledger: record.ledger,
                 );
 
                 widget.onUpdate(updatedRecord);
@@ -500,31 +582,57 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: _toggleCalculateMode,
-                    icon: Icon(_isCalculateMode ? Icons.close : Icons.calculate),
-                    label: Text(_isCalculateMode ? '取消计算' : '选择并计算'),
+                    onPressed: _isLoading ? null : _refreshFromServer,
+                    icon: _isLoading 
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.refresh, size: 18),
+                    label: const Text('更新'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _isCalculateMode ? Colors.red : Colors.blue,
+                      backgroundColor: Colors.purple,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      minimumSize: const Size(0, 32),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
+                  ElevatedButton.icon(
+                    onPressed: _toggleCalculateMode,
+                    icon: Icon(_isCalculateMode ? Icons.close : Icons.calculate, size: 18),
+                    label: Text(_isCalculateMode ? '取消计算' : '选择&计算'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isCalculateMode ? Colors.red : Colors.blue,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      minimumSize: const Size(0, 32),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
                   ElevatedButton.icon(
                     onPressed: _exportToExcel,
-                    icon: const Icon(Icons.file_download),
+                    icon: const Icon(Icons.file_download, size: 18),
                     label: const Text('导出'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      minimumSize: const Size(0, 32),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pushNamed(context, '/recycle_bin');
                     },
-                    icon: const Icon(Icons.delete_outline),
+                    icon: const Icon(Icons.delete_outline, size: 18),
                     label: const Text('回收站'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      minimumSize: const Size(0, 32),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -561,6 +669,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                                 onPressed: () {
                                   setState(() {
                                     _startDate = null;
+                                    _serverRecords = [];
                                   });
                                 },
                                 padding: EdgeInsets.zero,
@@ -599,6 +708,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                                 onPressed: () {
                                   setState(() {
                                     _endDate = null;
+                                    _serverRecords = [];
                                   });
                                 },
                                 padding: EdgeInsets.zero,
@@ -650,7 +760,9 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                               onChanged: (value) {
                                 setState(() {
                                   _selectedCategory = value;
+                                  _serverRecords = [];
                                 });
+                                _searchFromServer();
                               },
                             ),
                           ),
