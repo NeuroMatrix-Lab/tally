@@ -7,6 +7,7 @@ import 'pages/add_record_page.dart';
 import 'pages/view_records_page.dart';
 import 'pages/operation_log_page.dart';
 import 'pages/recycle_bin_page.dart';
+import 'services/api_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -84,27 +85,41 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadRecords() async {
-    final prefs = await SharedPreferences.getInstance();
-    final recordsJson = prefs.getString('records');
-    if (recordsJson != null) {
-      final List<dynamic> decoded = json.decode(recordsJson);
-      setState(() {
-        _records = decoded.map((item) => Record.fromMap(item)).toList();
-      });
-    }
-    final deletedRecordsJson = prefs.getString('deletedRecords');
-    if (deletedRecordsJson != null) {
-      final List<dynamic> decoded = json.decode(deletedRecordsJson);
-      setState(() {
-        _deletedRecords = decoded.map((item) => Record.fromMap(item)).toList();
-      });
-    }
-    final operationLogsJson = prefs.getString('operationLogs');
-    if (operationLogsJson != null) {
-      final List<dynamic> decoded = json.decode(operationLogsJson);
-      setState(() {
-        _operationLogs = decoded.map((item) => OperationLog.fromMap(item)).toList();
-      });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      try {
+        final records = await ApiService.getRecentRecords(months: 3);
+        setState(() {
+          _records = records;
+        });
+      } catch (e) {
+        print('Error loading records from server: $e');
+        final recordsJson = prefs.getString('records');
+        if (recordsJson != null) {
+          final List<dynamic> decoded = json.decode(recordsJson);
+          setState(() {
+            _records = decoded.map((item) => Record.fromMap(item)).toList();
+          });
+        }
+      }
+      
+      final deletedRecordsJson = prefs.getString('deletedRecords');
+      if (deletedRecordsJson != null) {
+        final List<dynamic> decoded = json.decode(deletedRecordsJson);
+        setState(() {
+          _deletedRecords = decoded.map((item) => Record.fromMap(item)).toList();
+        });
+      }
+      final operationLogsJson = prefs.getString('operationLogs');
+      if (operationLogsJson != null) {
+        final List<dynamic> decoded = json.decode(operationLogsJson);
+        setState(() {
+          _operationLogs = decoded.map((item) => OperationLog.fromMap(item)).toList();
+        });
+      }
+    } catch (e) {
+      print('Error loading records: $e');
     }
   }
 
@@ -142,16 +157,22 @@ class _HomePageState extends State<HomePage> {
       workContent: workContent,
       amount: amount,
       category: category,
+      ledger: _defaultLedger,
     );
     setState(() {
       _records.add(newRecord);
     });
     _saveRecords();
     _addOperationLog('添加', '添加记录', details: '工作内容: $workContent, 金额: ¥$amount, 类别: $category');
+    
+    ApiService.createRecord(newRecord).catchError((e) {
+      print('Error creating record on server: $e');
+      throw e;
+    });
   }
 
   void _deleteRecord(String id) {
-    final recordToDelete = _records.firstWhere((record) => record.id == id, orElse: () => Record(id: '', date: DateTime.now(), workContent: '', amount: 0, category: ''));
+    final recordToDelete = _records.firstWhere((record) => record.id == id, orElse: () => Record(id: '', date: DateTime.now(), workContent: '', amount: 0, category: '', ledger: ''));
     setState(() {
       _records.removeWhere((record) => record.id == id);
       if (recordToDelete.id.isNotEmpty) {
@@ -163,6 +184,10 @@ class _HomePageState extends State<HomePage> {
     });
     _saveRecords();
     _addOperationLog('删除', '删除记录', details: '工作内容: ${recordToDelete.workContent}, 金额: ¥${recordToDelete.amount}, 类别: ${recordToDelete.category}');
+    
+    ApiService.deleteRecord(id).catchError((e) {
+      print('Error deleting record on server: $e');
+    });
   }
 
   void _updateRecord(Record updatedRecord) {
@@ -174,6 +199,11 @@ class _HomePageState extends State<HomePage> {
     });
     _saveRecords();
     _addOperationLog('编辑', '编辑记录', details: '工作内容: ${updatedRecord.workContent}, 金额: ¥${updatedRecord.amount}, 类别: ${updatedRecord.category}');
+    
+    ApiService.updateRecord(updatedRecord).catchError((e) {
+      print('Error updating record on server: $e');
+      throw e;
+    });
   }
 
   void _restoreFromRecycleBin(Record record) {

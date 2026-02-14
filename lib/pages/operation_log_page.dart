@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/operation_log.dart';
+import 'settings_page.dart';
 
 class OperationLogPage extends StatefulWidget {
   final List<OperationLog> operationLogs;
@@ -105,6 +106,17 @@ class _OperationLogPageState extends State<OperationLogPage> {
                           });
                         },
                       ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.settings),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const SettingsPage()),
+                        );
+                      },
+                      tooltip: '设置',
                     ),
                   ],
                 ),
