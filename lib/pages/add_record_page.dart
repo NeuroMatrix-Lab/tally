@@ -5,8 +5,21 @@ class AddRecordPage extends StatefulWidget {
   final Function(DateTime date, String workContent, double amount, String category) onAdd;
   final List<String> categories;
   final List<String> workContents;
+  final List<String> ledgers;
+  final String defaultLedger;
+  final Function(String) onLedgerChanged;
+  final Function(String) onAddLedger;
 
-  const AddRecordPage({super.key, required this.onAdd, required this.categories, required this.workContents});
+  const AddRecordPage({
+    super.key, 
+    required this.onAdd, 
+    required this.categories, 
+    required this.workContents,
+    required this.ledgers,
+    required this.defaultLedger,
+    required this.onLedgerChanged,
+    required this.onAddLedger,
+  });
 
   @override
   State<AddRecordPage> createState() => _AddRecordPageState();
@@ -24,6 +37,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      locale: const Locale('zh', 'CN'),
     );
     if (picked != null && mounted) {
       setState(() {
@@ -70,6 +84,117 @@ class _AddRecordPageState extends State<AddRecordPage> {
     super.dispose();
   }
 
+  Widget _buildLedgerSelector() {
+    return GestureDetector(
+      onTap: () {
+        if (widget.ledgers.isNotEmpty) {
+          _showLedgerOverlay();
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('账本', style: TextStyle(fontSize: 16)),
+            Row(
+              children: [
+                Text(
+                  widget.defaultLedger.isEmpty ? '选择账本' : widget.defaultLedger,
+                  style: const TextStyle(fontSize: 16),
+                ),
+                const Icon(Icons.arrow_drop_down),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showLedgerOverlay() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('选择账本'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: widget.ledgers.length + 1,
+            itemBuilder: (context, index) {
+              if (index == widget.ledgers.length) {
+                return ListTile(
+                  leading: const Icon(Icons.add, color: Colors.blue),
+                  title: const Text('添加账本', style: TextStyle(color: Colors.blue)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showAddLedgerDialog();
+                  },
+                );
+              }
+              final ledger = widget.ledgers[index];
+              return ListTile(
+                title: Text(ledger),
+                trailing: widget.defaultLedger == ledger
+                    ? const Icon(Icons.check, color: Colors.green)
+                    : null,
+                onTap: () {
+                  widget.onLedgerChanged(ledger);
+                  Navigator.pop(context);
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddLedgerDialog() {
+    final TextEditingController controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('添加账本'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: '请输入账本名称',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) {
+                widget.onAddLedger(name);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAutocompleteField({
     required String label,
     required String hint,
@@ -97,7 +222,9 @@ class _AddRecordPageState extends State<AddRecordPage> {
             '添加记录',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+          _buildLedgerSelector(),
+          const SizedBox(height: 16),
           GestureDetector(
             onTap: _selectDate,
             child: Container(

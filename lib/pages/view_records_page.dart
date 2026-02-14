@@ -8,10 +8,27 @@ import '../models/record.dart';
 
 class ViewRecordsPage extends StatefulWidget {
   final List<Record> records;
+  final List<Record> deletedRecords;
   final Function(String id) onDelete;
   final Function(Record record) onUpdate;
+  final Function(Record record) onRestore;
+  final List<String> ledgers;
+  final String defaultLedger;
+  final Function(String) onLedgerChanged;
+  final Function(String) onAddLedger;
 
-  const ViewRecordsPage({super.key, required this.records, required this.onDelete, required this.onUpdate});
+  const ViewRecordsPage({
+    super.key, 
+    required this.records, 
+    required this.deletedRecords,
+    required this.onDelete, 
+    required this.onUpdate,
+    required this.onRestore,
+    required this.ledgers,
+    required this.defaultLedger,
+    required this.onLedgerChanged,
+    required this.onAddLedger,
+  });
 
   @override
   State<ViewRecordsPage> createState() => _ViewRecordsPageState();
@@ -75,6 +92,121 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
     return categories;
   }
 
+  Widget _buildLedgerSelector() {
+    return GestureDetector(
+      onTap: () {
+        if (widget.ledgers.isNotEmpty) {
+          _showLedgerOverlay();
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                widget.defaultLedger.isEmpty ? '选择账本' : widget.defaultLedger,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: widget.defaultLedger.isEmpty ? Colors.grey : Colors.black,
+                ),
+              ),
+            ),
+            if (widget.ledgers.isNotEmpty)
+              const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showLedgerOverlay() {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('选择账本'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: widget.ledgers.length + 1,
+            itemBuilder: (context, index) {
+              if (index == widget.ledgers.length) {
+                return ListTile(
+                  leading: const Icon(Icons.add, color: Colors.blue),
+                  title: const Text('添加账本', style: TextStyle(color: Colors.blue)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showAddLedgerDialog();
+                  },
+                );
+              }
+              final ledger = widget.ledgers[index];
+              return ListTile(
+                title: Text(ledger),
+                trailing: widget.defaultLedger == ledger
+                    ? const Icon(Icons.check, color: Colors.green)
+                    : null,
+                onTap: () {
+                  widget.onLedgerChanged(ledger);
+                  Navigator.pop(context);
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddLedgerDialog() {
+    final TextEditingController controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('添加账本'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: '请输入账本名称',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) {
+                widget.onAddLedger(name);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+  }
+
   double get _totalAmount {
     return _filteredRecords.fold(0.0, (sum, record) => sum + record.amount);
   }
@@ -91,6 +223,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
       initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      locale: const Locale('zh', 'CN'),
     );
     if (picked != null && mounted) {
       setState(() {
@@ -105,6 +238,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
       initialDate: _endDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      locale: const Locale('zh', 'CN'),
     );
     if (picked != null && mounted) {
       setState(() {
@@ -219,6 +353,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                         initialDate: selectedDate,
                         firstDate: DateTime(2020),
                         lastDate: DateTime(2100),
+                        locale: const Locale('zh', 'CN'),
                       );
                       if (picked != null) {
                         setDialogState(() {
@@ -275,6 +410,37 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
             ),
           ),
           actions: [
+            TextButton(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: const Text('确认删除'),
+                    content: const Text('确定要删除这条记录吗？'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: const Text('取消'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(dialogContext);
+                          Navigator.pop(context);
+                          widget.onDelete(record.id);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('记录已删除')),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                        child: const Text('删除'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('删除'),
+            ),
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('取消'),
@@ -333,7 +499,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                   ElevatedButton.icon(
                     onPressed: _toggleCalculateMode,
                     icon: Icon(_isCalculateMode ? Icons.close : Icons.calculate),
-                    label: Text(_isCalculateMode ? '取消计算' : '计算'),
+                    label: Text(_isCalculateMode ? '取消计算' : '选择并计算'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _isCalculateMode ? Colors.red : Colors.blue,
                     ),
@@ -347,8 +513,94 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                       backgroundColor: Colors.green,
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('回收站'),
+                              IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                            ],
+                          ),
+                          content: SizedBox(
+                            width: double.maxFinite,
+                            height: 400,
+                            child: widget.deletedRecords.isEmpty
+                                ? const Center(child: Text('回收站为空'))
+                                : ListView.builder(
+                                    itemCount: widget.deletedRecords.length,
+                                    itemBuilder: (context, index) {
+                                      final record = widget.deletedRecords[index];
+                                      return Card(
+                                        child: ListTile(
+                                          title: Text(record.workContent),
+                                          subtitle: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(DateFormat('yyyy-MM-dd').format(record.date)),
+                                              Text(
+                                                record.category,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                '¥${record.amount.toStringAsFixed(2)}',
+                                                style: const TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              IconButton(
+                                                icon: const Icon(Icons.restore, color: Colors.green),
+                                                onPressed: () {
+                                                  widget.onRestore(record);
+                                                  Navigator.pop(context);
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(content: Text('记录已恢复')),
+                                                  );
+                                                },
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('关闭'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('回收站'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                 ],
               ),
+              const SizedBox(height: 16),
+              _buildLedgerSelector(),
               const SizedBox(height: 16),
               Row(
                 children: [
