@@ -16,6 +16,7 @@ class ViewRecordsPage extends StatefulWidget {
   final String defaultLedger;
   final Function(String) onLedgerChanged;
   final Function(String) onAddLedger;
+  final Function(int) onExport;
 
   const ViewRecordsPage({
     super.key, 
@@ -28,6 +29,7 @@ class ViewRecordsPage extends StatefulWidget {
     required this.defaultLedger,
     required this.onLedgerChanged,
     required this.onAddLedger,
+    required this.onExport,
   });
 
   @override
@@ -317,6 +319,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
         await file.writeAsBytes(bytes, flush: true);
         if (mounted) {
           await Share.shareXFiles([XFile(file.path)], text: '导出账目记录');
+          widget.onExport(_filteredRecords.length);
         }
       }
     } catch (e) {
@@ -516,79 +519,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                   const SizedBox(width: 8),
                   ElevatedButton.icon(
                     onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('回收站'),
-                              IconButton(
-                                icon: const Icon(Icons.close),
-                                onPressed: () => Navigator.pop(context),
-                              ),
-                            ],
-                          ),
-                          content: SizedBox(
-                            width: double.maxFinite,
-                            height: 400,
-                            child: widget.deletedRecords.isEmpty
-                                ? const Center(child: Text('回收站为空'))
-                                : ListView.builder(
-                                    itemCount: widget.deletedRecords.length,
-                                    itemBuilder: (context, index) {
-                                      final record = widget.deletedRecords[index];
-                                      return Card(
-                                        child: ListTile(
-                                          title: Text(record.workContent),
-                                          subtitle: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(DateFormat('yyyy-MM-dd').format(record.date)),
-                                              Text(
-                                                record.category,
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.grey[600],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          trailing: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                '¥${record.amount.toStringAsFixed(2)}',
-                                                style: const TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              IconButton(
-                                                icon: const Icon(Icons.restore, color: Colors.green),
-                                                onPressed: () {
-                                                  widget.onRestore(record);
-                                                  Navigator.pop(context);
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(content: Text('记录已恢复')),
-                                                  );
-                                                },
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('关闭'),
-                            ),
-                          ],
-                        ),
-                      );
+                      Navigator.pushNamed(context, '/recycle_bin');
                     },
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('回收站'),
@@ -684,50 +615,6 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text(
-                          '工作内容',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              isExpanded: true,
-                              hint: const Text('全部'),
-                              value: _selectedWorkContent,
-                              items: [
-                                const DropdownMenuItem<String>(
-                                  value: null,
-                                  child: Text('全部'),
-                                ),
-                                ..._uniqueWorkContents.map((content) {
-                                  return DropdownMenuItem<String>(
-                                    value: content,
-                                    child: Text(content),
-                                  );
-                                }),
-                              ],
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedWorkContent = value;
-                                });
-                              },
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -870,13 +757,6 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                  if (!_isCalculateMode)
-                                    IconButton(
-                                      icon: const Icon(Icons.delete),
-                                      onPressed: () {
-                                        widget.onDelete(record.id);
-                                      },
-                                    ),
                                 ],
                               ),
                             ),
