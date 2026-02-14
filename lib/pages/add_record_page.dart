@@ -191,47 +191,70 @@ class _CustomAutocomplete extends StatefulWidget {
 class _CustomAutocompleteState extends State<_CustomAutocomplete> {
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
+  final GlobalKey _textFieldKey = GlobalKey();
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (_focusNode.hasFocus && widget.options.isNotEmpty) {
+      _showOverlay();
+    } else {
+      _hideOverlay();
+    }
+  }
 
   void _showOverlay() {
     if (_overlayEntry != null) return;
     
+    final renderBox = _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    
+    final size = renderBox.size;
+    final position = renderBox.localToGlobal(Offset.zero);
+    
     _overlayEntry = OverlayEntry(
-      builder: (context) => GestureDetector(
-        onTap: _hideOverlay,
-        behavior: HitTestBehavior.translucent,
-        child: Positioned(
-          width: 400,
-          child: CompositedTransformFollower(
-            link: _layerLink,
-            showWhenUnlinked: false,
-            offset: const Offset(0, 60),
-            child: GestureDetector(
-              onTap: () {},
-              child: Material(
-                elevation: 4.0,
-                child: Container(
-                  constraints: const BoxConstraints(maxHeight: 200),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: widget.options.length,
-                    itemBuilder: (context, index) {
-                      final option = widget.options[index];
-                      return InkWell(
-                        onTap: () {
-                          widget.onSelected(option);
-                          _hideOverlay();
-                        },
-                        child: ListTile(
-                          title: Text(option),
-                        ),
-                      );
-                    },
-                  ),
+      builder: (context) => Stack(
+        children: [
+          GestureDetector(
+            onTap: _hideOverlay,
+            behavior: HitTestBehavior.translucent,
+            child: Container(color: Colors.transparent),
+          ),
+          Positioned(
+            top: position.dy + size.height + 8,
+            left: position.dx,
+            width: size.width,
+            child: Material(
+              elevation: 4.0,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: widget.options.length,
+                  itemBuilder: (context, index) {
+                    final option = widget.options[index];
+                    return InkWell(
+                      onTap: () {
+                        widget.onSelected(option);
+                        _hideOverlay();
+                        _focusNode.unfocus();
+                      },
+                      child: ListTile(
+                        title: Text(option),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
     
@@ -246,6 +269,8 @@ class _CustomAutocompleteState extends State<_CustomAutocomplete> {
   @override
   void dispose() {
     _hideOverlay();
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -253,22 +278,26 @@ class _CustomAutocompleteState extends State<_CustomAutocomplete> {
   Widget build(BuildContext context) {
     return CompositedTransformTarget(
       link: _layerLink,
-      child: TextField(
-        controller: widget.controller,
-        decoration: InputDecoration(
-          labelText: widget.label,
-          border: const OutlineInputBorder(),
-          hintText: widget.hint,
-          suffixIcon: widget.options.isEmpty ? null : const Icon(Icons.arrow_drop_down),
+      child: Container(
+        key: _textFieldKey,
+        child: TextField(
+          controller: widget.controller,
+          focusNode: _focusNode,
+          decoration: InputDecoration(
+            labelText: widget.label,
+            border: const OutlineInputBorder(),
+            hintText: widget.hint,
+            suffixIcon: widget.options.isEmpty ? null : const Icon(Icons.arrow_drop_down),
+          ),
+          onTap: () {
+            if (widget.options.isNotEmpty) {
+              _showOverlay();
+            }
+          },
+          onChanged: (value) {
+            _hideOverlay();
+          },
         ),
-        onTap: () {
-          if (widget.options.isNotEmpty) {
-            _showOverlay();
-          }
-        },
-        onChanged: (value) {
-          _hideOverlay();
-        },
       ),
     );
   }
