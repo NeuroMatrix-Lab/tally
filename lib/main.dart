@@ -35,8 +35,11 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   List<Record> _records = [];
+  List<Record> _deletedRecords = [];
   final List<String> _pageTitles = ['记账', '查账'];
   late PageController _pageController;
+  String _defaultLedger = '默认账本';
+  final List<String> _ledgers = ['默认账本'];
 
   List<String> get _categories {
     final categories = _records.map((r) => r.category).toSet().toList();
@@ -72,12 +75,21 @@ class _HomePageState extends State<HomePage> {
         _records = decoded.map((item) => Record.fromMap(item)).toList();
       });
     }
+    final deletedRecordsJson = prefs.getString('deletedRecords');
+    if (deletedRecordsJson != null) {
+      final List<dynamic> decoded = json.decode(deletedRecordsJson);
+      setState(() {
+        _deletedRecords = decoded.map((item) => Record.fromMap(item)).toList();
+      });
+    }
   }
 
   Future<void> _saveRecords() async {
     final prefs = await SharedPreferences.getInstance();
     final recordsJson = json.encode(_records.map((r) => r.toMap()).toList());
     await prefs.setString('records', recordsJson);
+    final deletedRecordsJson = json.encode(_deletedRecords.map((r) => r.toMap()).toList());
+    await prefs.setString('deletedRecords', deletedRecordsJson);
   }
 
   void _addRecord(DateTime date, String workContent, double amount, String category) {
@@ -95,8 +107,15 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _deleteRecord(String id) {
+    final recordToDelete = _records.firstWhere((record) => record.id == id, orElse: () => Record(id: '', date: DateTime.now(), workContent: '', amount: 0, category: ''));
     setState(() {
       _records.removeWhere((record) => record.id == id);
+      if (recordToDelete.id.isNotEmpty) {
+        _deletedRecords.insert(0, recordToDelete);
+        if (_deletedRecords.length > 300) {
+          _deletedRecords = _deletedRecords.sublist(0, 300);
+        }
+      }
     });
     _saveRecords();
   }
@@ -130,11 +149,53 @@ class _HomePageState extends State<HomePage> {
             onAdd: _addRecord,
             categories: _categories,
             workContents: _workContents,
+            ledgers: _ledgers,
+            defaultLedger: _defaultLedger,
+            onLedgerChanged: (ledger) {
+              setState(() {
+                _defaultLedger = ledger;
+              });
+              _saveRecords();
+            },
+            onAddLedger: (ledger) {
+              setState(() {
+                if (!_ledgers.contains(ledger)) {
+                  _ledgers.add(ledger);
+                  _defaultLedger = ledger;
+                }
+              });
+              _saveRecords();
+            },
           ),
           ViewRecordsPage(
             records: _records,
+            deletedRecords: _deletedRecords,
             onDelete: _deleteRecord,
             onUpdate: _updateRecord,
+            onRestore: (record) {
+              setState(() {
+                _deletedRecords.removeWhere((r) => r.id == record.id);
+                _records.add(record);
+              });
+              _saveRecords();
+            },
+            ledgers: _ledgers,
+            defaultLedger: _defaultLedger,
+            onLedgerChanged: (ledger) {
+              setState(() {
+                _defaultLedger = ledger;
+              });
+              _saveRecords();
+            },
+            onAddLedger: (ledger) {
+              setState(() {
+                if (!_ledgers.contains(ledger)) {
+                  _ledgers.add(ledger);
+                  _defaultLedger = ledger;
+                }
+              });
+              _saveRecords();
+            },
           ),
         ],
       ),
