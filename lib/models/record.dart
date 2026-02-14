@@ -6,6 +6,7 @@ class Record {
   final String workContent;
   final double amount;
   final String category;
+  final String ledger;
 
   Record({
     required this.id,
@@ -13,25 +14,28 @@ class Record {
     required this.workContent,
     required this.amount,
     required this.category,
+    required this.ledger,
   });
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
+      'recordId': id,
       'date': date.toIso8601String(),
       'workContent': workContent,
       'amount': amount,
       'category': category,
+      'ledger': ledger,
     };
   }
 
   factory Record.fromMap(Map<String, dynamic> map) {
     return Record(
-      id: map['id'],
+      id: map['recordId'] ?? map['id'],
       date: DateTime.parse(map['date']),
       workContent: map['workContent'],
       amount: map['amount'],
       category: map['category'] ?? '其他',
+      ledger: map['ledger'] ?? '默认账本',
     );
   }
 
