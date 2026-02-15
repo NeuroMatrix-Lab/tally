@@ -255,4 +255,74 @@ class ApiService {
       throw Exception('Error uploading image: $e');
     }
   }
+
+  static Future<List<String>> syncLedgers() async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final response = await http.get(
+        Uri.parse('$baseUrl/records/ledgers'),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((item) => item.toString()).toList();
+      } else {
+        throw Exception('Failed to sync ledgers: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error syncing ledgers: $e');
+    }
+  }
+
+  static Future<String> createLedger(String name) async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final response = await http.post(
+        Uri.parse('$baseUrl/records/ledgers'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'name': name}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['id'] ?? data['name'];
+      } else {
+        throw Exception('Failed to create ledger: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error creating ledger: $e');
+    }
+  }
+
+  static Future<void> updateLedger(String oldName, String newName) async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final response = await http.put(
+        Uri.parse('$baseUrl/records/ledgers/$oldName'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'name': newName}),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update ledger: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error updating ledger: $e');
+    }
+  }
+
+  static Future<void> deleteLedger(String name) async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final response = await http.delete(
+        Uri.parse('$baseUrl/records/ledgers/$name'),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to delete ledger: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error deleting ledger: $e');
+    }
+  }
 }
