@@ -200,28 +200,36 @@ class _OperationLogPageState extends State<OperationLogPage> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    ChoiceChip(
-                      label: const Text('全部'),
-                      selected: _selectedType == null,
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedType = selected ? null : null;
-                        });
-                      },
-                    ),
-                    ..._operationTypes.map((type) => ChoiceChip(
-                      label: Text(type),
-                      selected: _selectedType == type,
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedType = selected ? type : null;
-                        });
-                      },
-                    )),
-                  ],
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      FilterChip(
+                        label: const Text('全部'),
+                        selected: _selectedType == null,
+                        showCheckmark: false,
+                        onSelected: (selected) {
+                          setState(() {
+                            _selectedType = null;
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      ..._operationTypes.map((type) => Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          label: Text(type),
+                          selected: _selectedType == type,
+                          showCheckmark: false,
+                          onSelected: (selected) {
+                            setState(() {
+                              _selectedType = selected ? type : null;
+                            });
+                          },
+                        ),
+                      )),
+                    ],
+                  ),
                 ),
               ],
             ),

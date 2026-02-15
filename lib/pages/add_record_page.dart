@@ -199,7 +199,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
   }
 
   void _showLedgerOverlay() {
-    final itemCount = widget.ledgers.isEmpty ? 2 : widget.ledgers.length + 2;
+    final itemCount = widget.ledgers.isEmpty ? 1 : widget.ledgers.length + 1;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -211,50 +211,29 @@ class _AddRecordPageState extends State<AddRecordPage> {
             itemCount: itemCount,
             itemBuilder: (context, index) {
               if (widget.ledgers.isEmpty) {
-                if (index == 0) {
-                  return ListTile(
-                    leading: const Icon(Icons.add, color: Colors.blue),
-                    title: const Text('添加账本', style: TextStyle(color: Colors.blue)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showAddLedgerDialog();
-                    },
-                  );
-                } else if (index == 1) {
-                  return ListTile(
-                    leading: const Icon(Icons.settings, color: Colors.orange),
-                    title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
-                    onTap: () async {
-                      Navigator.pop(context);
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => LedgerManagePage(
-                            ledgers: widget.ledgers,
-                            defaultLedger: widget.defaultLedger,
-                            onLedgersUpdated: (updatedLedgers) {
-                              if (widget.onLedgersUpdated != null) {
-                                widget.onLedgersUpdated!(updatedLedgers);
-                              }
-                            },
-                          ),
+                return ListTile(
+                  leading: const Icon(Icons.settings, color: Colors.orange),
+                  title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => LedgerManagePage(
+                          ledgers: widget.ledgers,
+                          defaultLedger: widget.defaultLedger,
+                          onLedgersUpdated: (updatedLedgers) {
+                            if (widget.onLedgersUpdated != null) {
+                              widget.onLedgersUpdated!(updatedLedgers);
+                            }
+                          },
                         ),
-                      );
-                    },
-                  );
-                }
+                      ),
+                    );
+                  },
+                );
               } else {
                 if (index == widget.ledgers.length) {
-                  return ListTile(
-                    leading: const Icon(Icons.add, color: Colors.blue),
-                    title: const Text('添加账本', style: TextStyle(color: Colors.blue)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showAddLedgerDialog();
-                    },
-                  );
-                }
-                if (index == widget.ledgers.length + 1) {
                   return ListTile(
                     leading: const Icon(Icons.settings, color: Colors.orange),
                     title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
