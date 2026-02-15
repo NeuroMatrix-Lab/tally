@@ -883,27 +883,6 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _refreshFromServer,
-                          icon: _isLoading 
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.purple,
-                                  ),
-                                )
-                              : const Icon(Icons.refresh, size: 18),
-                          label: const Text('更新'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.purple.shade100,
-                            foregroundColor: Colors.purple.shade800,
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                            minimumSize: const Size(0, 32),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        ElevatedButton.icon(
                           onPressed: _toggleCalculateMode,
                           icon: Icon(_isCalculateMode ? Icons.close : Icons.calculate, size: 18),
                           label: Text(_isCalculateMode ? '取消计算' : '选择&计算'),
@@ -940,7 +919,6 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                             minimumSize: const Size(0, 32),
                           ),
                         ),
-                        const SizedBox(width: 8),
                       ],
                     ),
                     const SizedBox(height: 16),
