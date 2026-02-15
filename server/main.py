@@ -444,13 +444,13 @@ async def get_all_ledgers():
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT DISTINCT ledger
-            FROM records
-            ORDER BY ledger
+            SELECT name
+            FROM ledgers
+            ORDER BY name
         ''')
         rows = cursor.fetchall()
     
-    return [row["ledger"] for row in rows]
+    return [row["name"] for row in rows]
 
 
 @app.post("/api/records/ledgers")

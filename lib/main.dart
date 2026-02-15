@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models/record.dart';
 import 'models/operation_log.dart';
@@ -10,7 +12,16 @@ import 'pages/operation_log_page.dart';
 import 'pages/recycle_bin_page.dart';
 import 'services/api_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+  
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  
   runApp(const MyApp());
 }
 
@@ -21,11 +32,44 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '记账软件',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.light,
+        ),
         useMaterial3: true,
         fontFamily: 'MiSans',
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
       ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+        fontFamily: 'MiSans',
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
+      ),
+      themeMode: ThemeMode.system,
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(1.0),
+          ),
+          child: child!,
+        );
+      },
       home: const HomePage(),
       routes: {
         '/recycle_bin': (context) => RecycleBinPage(
@@ -59,7 +103,6 @@ class _HomePageState extends State<HomePage> {
   late PageController _pageController;
   String _defaultLedger = '默认账本';
   final List<String> _ledgers = ['默认账本'];
-  Timer? _syncTimer;
   bool _isSyncing = false;
   bool _isServerConnected = false;
 
@@ -81,21 +124,12 @@ class _HomePageState extends State<HomePage> {
     _instance = this;
     _pageController = PageController();
     _loadRecords();
-    _startAutoSync();
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    _syncTimer?.cancel();
     super.dispose();
-  }
-
-  void _startAutoSync() {
-    _syncTimer?.cancel();
-    _syncTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _syncFromServer();
-    });
   }
 
   Future<void> _syncFromServer() async {
@@ -107,12 +141,19 @@ class _HomePageState extends State<HomePage> {
 
     try {
       final records = await ApiService.getRecentRecords(months: 3);
+      final ledgers = await ApiService.syncLedgers();
       if (mounted) {
         setState(() {
           _records = records;
+          _ledgers.clear();
+          _ledgers.addAll(ledgers);
+          if (!_ledgers.contains(_defaultLedger) && _ledgers.isNotEmpty) {
+            _defaultLedger = _ledgers.first;
+          }
           _isSyncing = false;
           _isServerConnected = true;
         });
+        _saveRecords();
       }
     } catch (e) {
       print('Error syncing from server: $e');
@@ -332,10 +373,15 @@ class _HomePageState extends State<HomePage> {
                   color: Colors.white,
                 ),
               )
-            else if (_isServerConnected)
-              const Icon(Icons.cloud_done, size: 20, color: Colors.green)
             else
-              const Icon(Icons.cloud_off, size: 20, color: Colors.red),
+              GestureDetector(
+                onTap: _syncFromServer,
+                child: Icon(
+                  _isServerConnected ? Icons.cloud_done : Icons.cloud_off,
+                  size: 20,
+                  color: _isServerConnected ? Colors.green : Colors.red,
+                ),
+              ),
           ],
         ),
       ),
@@ -347,84 +393,91 @@ class _HomePageState extends State<HomePage> {
           });
         },
         children: [
-          AddRecordPage(
-            onAdd: _addRecord,
-            categories: _categories,
-            workContents: _workContents,
-            ledgers: _ledgers,
-            defaultLedger: _defaultLedger,
-            onLedgerChanged: (ledger) {
-              setState(() {
-                _defaultLedger = ledger;
-              });
-              _saveRecords();
-            },
-            onAddLedger: (ledger) {
-              setState(() {
-                if (!_ledgers.contains(ledger)) {
-                  _ledgers.add(ledger);
+          RepaintBoundary(
+            child: AddRecordPage(
+              onAdd: _addRecord,
+              categories: _categories,
+              workContents: _workContents,
+              ledgers: _ledgers,
+              defaultLedger: _defaultLedger,
+              onLedgerChanged: (ledger) {
+                setState(() {
                   _defaultLedger = ledger;
-                }
-              });
-              _saveRecords();
-            },
-            onLedgersUpdated: (updatedLedgers) {
-              setState(() {
-                _ledgers.clear();
-                _ledgers.addAll(updatedLedgers);
-                if (!_ledgers.contains(_defaultLedger) && _ledgers.isNotEmpty) {
-                  _defaultLedger = _ledgers.first;
-                }
-              });
-              _saveRecords();
-            },
+                });
+                _saveRecords();
+              },
+              onAddLedger: (ledger) {
+                setState(() {
+                  if (!_ledgers.contains(ledger)) {
+                    _ledgers.add(ledger);
+                    _defaultLedger = ledger;
+                  }
+                });
+                _saveRecords();
+              },
+              onLedgersUpdated: (updatedLedgers) {
+                setState(() {
+                  _ledgers.clear();
+                  _ledgers.addAll(updatedLedgers);
+                  if (!_ledgers.contains(_defaultLedger) && _ledgers.isNotEmpty) {
+                    _defaultLedger = _ledgers.first;
+                  }
+                });
+                _saveRecords();
+              },
+            ),
           ),
-          ViewRecordsPage(
-            records: _records,
-            deletedRecords: _deletedRecords,
-            onDelete: _deleteRecord,
-            onUpdate: _updateRecord,
-            onRestore: (record) {
-              setState(() {
-                _deletedRecords.removeWhere((r) => r.id == record.id);
-                _records.add(record);
-              });
-              _saveRecords();
-              _addOperationLog('恢复', '恢复记录', details: '工作内容: ${record.workContent}, 金额: ¥${record.amount}, 类别: ${record.category}');
-            },
-            ledgers: _ledgers,
-            defaultLedger: _defaultLedger,
-            onLedgerChanged: (ledger) {
-              setState(() {
-                _defaultLedger = ledger;
-              });
-              _saveRecords();
-            },
-            onAddLedger: (ledger) {
-              setState(() {
-                if (!_ledgers.contains(ledger)) {
-                  _ledgers.add(ledger);
+          RepaintBoundary(
+            child: ViewRecordsPage(
+              records: _records,
+              deletedRecords: _deletedRecords,
+              onDelete: _deleteRecord,
+              onUpdate: _updateRecord,
+              onRestore: (record) {
+                setState(() {
+                  _deletedRecords.removeWhere((r) => r.id == record.id);
+                  _records.add(record);
+                });
+                _saveRecords();
+                _addOperationLog('恢复', '恢复记录', details: '工作内容: ${record.workContent}, 金额: ¥${record.amount}, 类别: ${record.category}');
+              },
+              ledgers: _ledgers,
+              defaultLedger: _defaultLedger,
+              onLedgerChanged: (ledger) {
+                setState(() {
                   _defaultLedger = ledger;
-                }
-              });
-              _saveRecords();
-            },
-            onLedgersUpdated: (updatedLedgers) {
-              setState(() {
-                _ledgers.clear();
-                _ledgers.addAll(updatedLedgers);
-                if (!_ledgers.contains(_defaultLedger) && _ledgers.isNotEmpty) {
-                  _defaultLedger = _ledgers.first;
-                }
-              });
-              _saveRecords();
-            },
-            onExport: (count) {
-              _addOperationLog('导出', '导出账目记录', details: '导出了$count条记录');
-            },
+                });
+                _saveRecords();
+              },
+              onAddLedger: (ledger) {
+                setState(() {
+                  if (!_ledgers.contains(ledger)) {
+                    _ledgers.add(ledger);
+                    _defaultLedger = ledger;
+                  }
+                });
+                _saveRecords();
+              },
+              onLedgersUpdated: (updatedLedgers) {
+                setState(() {
+                  _ledgers.clear();
+                  _ledgers.addAll(updatedLedgers);
+                  if (!_ledgers.contains(_defaultLedger) && _ledgers.isNotEmpty) {
+                    _defaultLedger = _ledgers.first;
+                  }
+                });
+                _saveRecords();
+              },
+              onSync: _syncFromServer,
+              onExport: (count) {
+                _addOperationLog('导出', '导出账目记录', details: '导出了$count条记录');
+              },
+            ),
           ),
-          OperationLogPage(
-            operationLogs: _operationLogs,
+          RepaintBoundary(
+            child: OperationLogPage(
+              operationLogs: _operationLogs,
+            ),
           ),
         ],
       ),
