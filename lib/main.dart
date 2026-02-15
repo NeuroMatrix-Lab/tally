@@ -24,6 +24,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
+        fontFamily: 'MiSans',
       ),
       home: const HomePage(),
       routes: {
@@ -149,6 +150,37 @@ class _HomePageState extends State<HomePage> {
       }
       
       try {
+        final ledgers = await ApiService.syncLedgers();
+        final ledgersJson = prefs.getString('ledgers');
+        if (ledgersJson != null) {
+          final List<dynamic> decoded = json.decode(ledgersJson);
+          final localLedgers = decoded.map((item) => item.toString()).toList();
+          for (final ledger in localLedgers) {
+            if (!ledgers.contains(ledger)) {
+              ledgers.add(ledger);
+            }
+          }
+        }
+        setState(() {
+          _ledgers.clear();
+          _ledgers.addAll(ledgers);
+          if (!_ledgers.contains(_defaultLedger) && _ledgers.isNotEmpty) {
+            _defaultLedger = _ledgers.first;
+          }
+        });
+      } catch (e) {
+        print('Error syncing ledgers from server: $e');
+        final ledgersJson = prefs.getString('ledgers');
+        if (ledgersJson != null) {
+          final List<dynamic> decoded = json.decode(ledgersJson);
+          setState(() {
+            _ledgers.clear();
+            _ledgers.addAll(decoded.map((item) => item.toString()));
+          });
+        }
+      }
+      
+      try {
         final deletedRecords = await ApiService.getDeletedRecords();
         setState(() {
           _deletedRecords = deletedRecords;
@@ -182,6 +214,8 @@ class _HomePageState extends State<HomePage> {
     await prefs.setString('records', recordsJson);
     final operationLogsJson = json.encode(_operationLogs.map((log) => log.toMap()).toList());
     await prefs.setString('operationLogs', operationLogsJson);
+    final ledgersJson = json.encode(_ledgers);
+    await prefs.setString('ledgers', ledgersJson);
   }
 
   void _addOperationLog(String type, String description, {String? details}) {
@@ -334,6 +368,16 @@ class _HomePageState extends State<HomePage> {
               });
               _saveRecords();
             },
+            onLedgersUpdated: (updatedLedgers) {
+              setState(() {
+                _ledgers.clear();
+                _ledgers.addAll(updatedLedgers);
+                if (!_ledgers.contains(_defaultLedger) && _ledgers.isNotEmpty) {
+                  _defaultLedger = _ledgers.first;
+                }
+              });
+              _saveRecords();
+            },
           ),
           ViewRecordsPage(
             records: _records,
@@ -361,6 +405,16 @@ class _HomePageState extends State<HomePage> {
                 if (!_ledgers.contains(ledger)) {
                   _ledgers.add(ledger);
                   _defaultLedger = ledger;
+                }
+              });
+              _saveRecords();
+            },
+            onLedgersUpdated: (updatedLedgers) {
+              setState(() {
+                _ledgers.clear();
+                _ledgers.addAll(updatedLedgers);
+                if (!_ledgers.contains(_defaultLedger) && _ledgers.isNotEmpty) {
+                  _defaultLedger = _ledgers.first;
                 }
               });
               _saveRecords();

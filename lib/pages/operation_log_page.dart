@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/operation_log.dart';
+import '../widgets/custom_date_picker.dart';
 import 'settings_page.dart';
 
 class OperationLogPage extends StatefulWidget {
@@ -50,12 +51,11 @@ class _OperationLogPageState extends State<OperationLogPage> {
   }
 
   Future<void> _selectStartDate() async {
-    final DateTime? picked = await showDatePicker(
+    final DateTime? picked = await showCustomDatePicker(
       context: context,
       initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      locale: const Locale('zh', 'CN'),
     );
     if (picked != null && mounted) {
       setState(() {
@@ -65,12 +65,11 @@ class _OperationLogPageState extends State<OperationLogPage> {
   }
 
   Future<void> _selectEndDate() async {
-    final DateTime? picked = await showDatePicker(
+    final DateTime? picked = await showCustomDatePicker(
       context: context,
       initialDate: _endDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      locale: const Locale('zh', 'CN'),
     );
     if (picked != null && mounted) {
       setState(() {

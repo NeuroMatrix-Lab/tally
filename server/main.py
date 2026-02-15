@@ -70,6 +70,14 @@ def init_db():
                 deleted_at TEXT
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ledgers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT
+            )
+        ''')
         
         cursor.execute("PRAGMA table_info(records)")
         columns = [column[1] for column in cursor.fetchall()]
@@ -92,6 +100,10 @@ class RecordDTO(BaseModel):
     amount: float
     ledger: str
     imageUrl: Optional[str] = None
+
+
+class LedgerDTO(BaseModel):
+    name: str
 
 
 @app.on_event("startup")
@@ -200,20 +212,6 @@ async def get_recent_work_contents(months: int = 3):
         rows = cursor.fetchall()
     
     return [row["work_content"] for row in rows]
-
-
-@app.get("/api/records/ledgers")
-async def get_all_ledgers():
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT DISTINCT ledger
-            FROM records
-            ORDER BY ledger
-        ''')
-        rows = cursor.fetchall()
-    
-    return [row["ledger"] for row in rows]
 
 
 @app.post("/api/upload")
@@ -439,6 +437,68 @@ async def permanently_delete_record(record_id: str):
             raise HTTPException(status_code=404, detail="Deleted record not found")
     
     return {"message": "Record permanently deleted"}
+
+
+@app.get("/api/records/ledgers")
+async def get_all_ledgers():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT DISTINCT ledger
+            FROM records
+            ORDER BY ledger
+        ''')
+        rows = cursor.fetchall()
+    
+    return [row["ledger"] for row in rows]
+
+
+@app.post("/api/records/ledgers")
+async def create_ledger(ledger: LedgerDTO):
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            now = datetime.now().isoformat()
+            cursor.execute('''
+                INSERT INTO ledgers (name, created_at, updated_at)
+                VALUES (?, ?, ?)
+            ''', (ledger.name, now, now))
+            conn.commit()
+        
+        return {"id": str(cursor.lastrowid), "name": ledger.name}
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Ledger already exists")
+
+
+@app.put("/api/records/ledgers/{old_name}")
+async def update_ledger(old_name: str, ledger: LedgerDTO):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        now = datetime.now().isoformat()
+        cursor.execute('''
+            UPDATE ledgers
+            SET name = ?, updated_at = ?
+            WHERE name = ?
+        ''', (ledger.name, now, old_name))
+        conn.commit()
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Ledger not found")
+    
+    return {"name": ledger.name}
+
+
+@app.delete("/api/records/ledgers/{name}")
+async def delete_ledger(name: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM ledgers WHERE name = ?', (name,))
+        conn.commit()
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Ledger not found")
+    
+    return {"message": "Ledger deleted successfully"}
 
 
 if __name__ == "__main__":
