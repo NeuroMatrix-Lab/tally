@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -7,6 +8,8 @@ import sqlite3
 import json
 from contextlib import contextmanager
 import os
+import uuid
+import shutil
 
 app = FastAPI(title="Tally Server", version="1.0.0")
 
@@ -19,6 +22,10 @@ app.add_middleware(
 )
 
 DATABASE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "tally.db")
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 @contextmanager
@@ -45,10 +52,35 @@ def init_db():
                 work_content TEXT NOT NULL,
                 amount REAL NOT NULL,
                 ledger TEXT NOT NULL,
+                image_url TEXT,
                 created_at TEXT,
                 updated_at TEXT
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS deleted_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                record_id TEXT UNIQUE NOT NULL,
+                date TEXT NOT NULL,
+                category TEXT NOT NULL,
+                work_content TEXT NOT NULL,
+                amount REAL NOT NULL,
+                ledger TEXT NOT NULL,
+                image_url TEXT,
+                deleted_at TEXT
+            )
+        ''')
+        
+        cursor.execute("PRAGMA table_info(records)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if 'image_url' not in columns:
+            cursor.execute('ALTER TABLE records ADD COLUMN image_url TEXT')
+        
+        cursor.execute("PRAGMA table_info(deleted_records)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if 'image_url' not in columns:
+            cursor.execute('ALTER TABLE deleted_records ADD COLUMN image_url TEXT')
+        
         conn.commit()
 
 
@@ -59,6 +91,7 @@ class RecordDTO(BaseModel):
     workContent: str
     amount: float
     ledger: str
+    imageUrl: Optional[str] = None
 
 
 @app.on_event("startup")
@@ -72,7 +105,7 @@ async def get_recent_records(months: int = 3):
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT record_id, date, category, work_content, amount, ledger
+            SELECT record_id, date, category, work_content, amount, ledger, image_url
             FROM records
             WHERE date >= ?
             ORDER BY date DESC
@@ -87,6 +120,7 @@ async def get_recent_records(months: int = 3):
             "workContent": row["work_content"],
             "amount": row["amount"],
             "ledger": row["ledger"],
+            "imageUrl": row["image_url"],
         }
         for row in rows
     ]
@@ -103,7 +137,7 @@ async def search_records(
         cursor = conn.cursor()
         
         query = '''
-            SELECT record_id, date, category, work_content, amount, ledger
+            SELECT record_id, date, category, work_content, amount, ledger, image_url
             FROM records
             WHERE date >= ? AND date <= ?
         '''
@@ -130,6 +164,7 @@ async def search_records(
             "workContent": row["work_content"],
             "amount": row["amount"],
             "ledger": row["ledger"],
+            "imageUrl": row["image_url"],
         }
         for row in rows
     ]
@@ -181,6 +216,21 @@ async def get_all_ledgers():
     return [row["ledger"] for row in rows]
 
 
+@app.post("/api/upload")
+async def upload_image(file: UploadFile = File(...)):
+    file_extension = file.filename.split('.')[-1].lower()
+    if file_extension not in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+    
+    unique_filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    return {"imageUrl": f"/uploads/{unique_filename}"}
+
+
 @app.post("/api/records")
 async def create_record(record: RecordDTO):
     try:
@@ -188,8 +238,8 @@ async def create_record(record: RecordDTO):
             cursor = conn.cursor()
             now = datetime.now().isoformat()
             cursor.execute('''
-                INSERT INTO records (record_id, date, category, work_content, amount, ledger, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO records (record_id, date, category, work_content, amount, ledger, image_url, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 record.recordId,
                 record.date.isoformat(),
@@ -197,6 +247,7 @@ async def create_record(record: RecordDTO):
                 record.workContent,
                 record.amount,
                 record.ledger,
+                record.imageUrl,
                 now,
                 now
             ))
@@ -209,6 +260,7 @@ async def create_record(record: RecordDTO):
             "workContent": record.workContent,
             "amount": record.amount,
             "ledger": record.ledger,
+            "imageUrl": record.imageUrl,
         }
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="Record ID already exists")
@@ -220,7 +272,7 @@ async def update_record(record_id: str, record: RecordDTO):
         cursor = conn.cursor()
         cursor.execute('''
             UPDATE records
-            SET date = ?, category = ?, work_content = ?, amount = ?, ledger = ?, updated_at = ?
+            SET date = ?, category = ?, work_content = ?, amount = ?, ledger = ?, image_url = ?, updated_at = ?
             WHERE record_id = ?
         ''', (
             record.date.isoformat(),
@@ -228,6 +280,7 @@ async def update_record(record_id: str, record: RecordDTO):
             record.workContent,
             record.amount,
             record.ledger,
+            record.imageUrl,
             datetime.now().isoformat(),
             record_id
         ))
@@ -243,6 +296,7 @@ async def update_record(record_id: str, record: RecordDTO):
         "workContent": record.workContent,
         "amount": record.amount,
         "ledger": record.ledger,
+        "imageUrl": record.imageUrl,
     }
 
 
@@ -250,13 +304,141 @@ async def update_record(record_id: str, record: RecordDTO):
 async def delete_record(record_id: str):
     with get_db() as conn:
         cursor = conn.cursor()
+        cursor.execute('SELECT record_id, date, category, work_content, amount, ledger, image_url FROM records WHERE record_id = ?', (record_id,))
+        row = cursor.fetchone()
+        
+        if row is None:
+            raise HTTPException(status_code=404, detail="Record not found")
+        
+        deleted_record = {
+            "recordId": row["record_id"],
+            "date": row["date"],
+            "category": row["category"],
+            "workContent": row["work_content"],
+            "amount": row["amount"],
+            "ledger": row["ledger"],
+            "imageUrl": row["image_url"],
+        }
+        
         cursor.execute('DELETE FROM records WHERE record_id = ?', (record_id,))
+        
+        cursor.execute('''
+            INSERT INTO deleted_records (record_id, date, category, work_content, amount, ledger, image_url, deleted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            deleted_record["recordId"],
+            deleted_record["date"],
+            deleted_record["category"],
+            deleted_record["workContent"],
+            deleted_record["amount"],
+            deleted_record["ledger"],
+            deleted_record["imageUrl"],
+            datetime.now().isoformat()
+        ))
+        
+        cursor.execute('''
+            DELETE FROM deleted_records 
+            WHERE id NOT IN (
+                SELECT id FROM deleted_records ORDER BY deleted_at DESC LIMIT 300
+            )
+        ''')
+        
+        conn.commit()
+    
+    return {"message": "Record deleted successfully"}
+
+
+@app.get("/api/deleted-records")
+async def get_deleted_records():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT record_id, date, category, work_content, amount, ledger, image_url, deleted_at
+            FROM deleted_records
+            ORDER BY deleted_at DESC
+        ''')
+        rows = cursor.fetchall()
+    
+    return [
+        {
+            "recordId": row["record_id"],
+            "date": row["date"],
+            "category": row["category"],
+            "workContent": row["work_content"],
+            "amount": row["amount"],
+            "ledger": row["ledger"],
+            "imageUrl": row["image_url"],
+            "deletedAt": row["deleted_at"],
+        }
+        for row in rows
+    ]
+
+
+@app.post("/api/deleted-records/{record_id}/restore")
+async def restore_deleted_record(record_id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT record_id, date, category, work_content, amount, ledger, image_url 
+            FROM deleted_records 
+            WHERE record_id = ?
+        ''', (record_id,))
+        row = cursor.fetchone()
+        
+        if row is None:
+            raise HTTPException(status_code=404, detail="Deleted record not found")
+        
+        restored_record = {
+            "recordId": row["record_id"],
+            "date": row["date"],
+            "category": row["category"],
+            "workContent": row["work_content"],
+            "amount": row["amount"],
+            "ledger": row["ledger"],
+            "imageUrl": row["image_url"],
+        }
+        
+        now = datetime.now().isoformat()
+        cursor.execute('''
+            INSERT INTO records (record_id, date, category, work_content, amount, ledger, image_url, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            restored_record["recordId"],
+            restored_record["date"],
+            restored_record["category"],
+            restored_record["workContent"],
+            restored_record["amount"],
+            restored_record["ledger"],
+            restored_record["imageUrl"],
+            now,
+            now
+        ))
+        
+        cursor.execute('DELETE FROM deleted_records WHERE record_id = ?', (record_id,))
+        conn.commit()
+    
+    return {
+        "recordId": restored_record["recordId"],
+        "date": restored_record["date"],
+        "category": restored_record["category"],
+        "workContent": restored_record["workContent"],
+        "amount": restored_record["amount"],
+        "ledger": restored_record["ledger"],
+        "imageUrl": restored_record["imageUrl"],
+    }
+
+
+@app.delete("/api/deleted-records/{record_id}")
+async def permanently_delete_record(record_id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM deleted_records WHERE record_id = ?', (record_id,))
         conn.commit()
         
         if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Record not found")
+            raise HTTPException(status_code=404, detail="Deleted record not found")
     
-    return {"message": "Record deleted successfully"}
+    return {"message": "Record permanently deleted"}
 
 
 if __name__ == "__main__":
