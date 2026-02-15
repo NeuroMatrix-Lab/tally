@@ -7,6 +7,7 @@ class Record {
   final double amount;
   final String category;
   final String ledger;
+  final String? imageUrl;
 
   Record({
     required this.id,
@@ -15,6 +16,7 @@ class Record {
     required this.amount,
     required this.category,
     required this.ledger,
+    this.imageUrl,
   });
 
   Map<String, dynamic> toMap() {
@@ -25,6 +27,7 @@ class Record {
       'amount': amount,
       'category': category,
       'ledger': ledger,
+      'imageUrl': imageUrl,
     };
   }
 
@@ -36,6 +39,7 @@ class Record {
       amount: map['amount'],
       category: map['category'] ?? '其他',
       ledger: map['ledger'] ?? '默认账本',
+      imageUrl: map['imageUrl'],
     );
   }
 

@@ -1,10 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:excel/excel.dart' as excel;
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'dart:io';
 import '../models/record.dart';
+import '../widgets/custom_date_picker.dart';
 import '../services/api_service.dart';
 
 class ViewRecordsPage extends StatefulWidget {
@@ -231,12 +233,11 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
   }
 
   Future<void> _selectStartDate() async {
-    final DateTime? picked = await showDatePicker(
+    final DateTime? picked = await showCustomDatePicker(
       context: context,
       initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      locale: const Locale('zh', 'CN'),
     );
     if (picked != null && mounted) {
       setState(() {
@@ -248,12 +249,11 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
   }
 
   Future<void> _selectEndDate() async {
-    final DateTime? picked = await showDatePicker(
+    final DateTime? picked = await showCustomDatePicker(
       context: context,
       initialDate: _endDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      locale: const Locale('zh', 'CN'),
     );
     if (picked != null && mounted) {
       setState(() {
@@ -418,153 +418,309 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
     final TextEditingController amountController = TextEditingController(text: record.amount.toString());
     final TextEditingController categoryController = TextEditingController(text: record.category);
     DateTime selectedDate = record.date;
+    File? selectedImage;
+    String? imageUrl = record.imageUrl;
+    final ImagePicker imagePicker = ImagePicker();
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('编辑记录'),
-          content: SizedBox(
-            width: 400,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  GestureDetector(
-                    onTap: () async {
-                      final DateTime? picked = await showDatePicker(
-                        context: context,
-                        initialDate: selectedDate,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2100),
-                        locale: const Locale('zh', 'CN'),
-                      );
-                      if (picked != null) {
-                        setDialogState(() {
-                          selectedDate = picked;
-                          dateController.text = DateFormat('yyyy-MM-dd').format(picked);
-                        });
-                      }
-                    },
-                    child: AbsorbPointer(
-                      child: TextField(
-                        controller: dateController,
-                        decoration: const InputDecoration(
-                          labelText: '日期',
-                          border: OutlineInputBorder(),
-                          suffixIcon: Icon(Icons.calendar_today),
+        builder: (context, setDialogState) {
+          Future<void> pickImage(ImageSource source) async {
+            try {
+              final XFile? pickedFile = await imagePicker.pickImage(
+                source: source,
+                imageQuality: 80,
+              );
+              
+              if (pickedFile != null) {
+                setDialogState(() {
+                  selectedImage = File(pickedFile.path);
+                  imageUrl = null;
+                });
+              }
+            } catch (e) {
+              print('Error picking image: $e');
+            }
+          }
+
+          void removeImage() {
+            setDialogState(() {
+              selectedImage = null;
+              imageUrl = null;
+            });
+          }
+
+          void showImagePickerDialog() {
+            showDialog(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('选择图片'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.camera_alt),
+                      title: const Text('拍照'),
+                      onTap: () {
+                        Navigator.pop(dialogContext);
+                        pickImage(ImageSource.camera);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.photo_library),
+                      title: const Text('从相册选择'),
+                      onTap: () {
+                        Navigator.pop(dialogContext);
+                        pickImage(ImageSource.gallery);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return AlertDialog(
+            title: const Text('编辑记录'),
+            content: SizedBox(
+              width: 400,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('图片', style: TextStyle(fontSize: 14)),
+                              Row(
+                                children: [
+                                  if (selectedImage != null || imageUrl != null)
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                                      onPressed: removeImage,
+                                      tooltip: '删除图片',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+                                  ElevatedButton.icon(
+                                    onPressed: showImagePickerDialog,
+                                    icon: const Icon(Icons.add_photo_alternate, size: 16),
+                                    label: const Text('选择', style: TextStyle(fontSize: 12)),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      minimumSize: const Size(0, 28),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          if (selectedImage != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.file(
+                                  selectedImage!,
+                                  height: 150,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            )
+                          else if (imageUrl != null && imageUrl!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  imageUrl!,
+                                  height: 150,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      height: 150,
+                                      color: Colors.grey.shade200,
+                                      child: const Center(
+                                        child: Icon(Icons.broken_image, color: Colors.grey),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            )
+                          else
+                            const Padding(
+                              padding: EdgeInsets.only(top: 8),
+                              child: Text(
+                                '暂无图片',
+                                style: TextStyle(color: Colors.grey, fontSize: 12),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: () async {
+                        final DateTime? picked = await showCustomDatePicker(
+                          context: context,
+                          initialDate: selectedDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) {
+                          setDialogState(() {
+                            selectedDate = picked;
+                            dateController.text = DateFormat('yyyy-MM-dd').format(picked);
+                          });
+                        }
+                      },
+                      child: AbsorbPointer(
+                        child: TextField(
+                          controller: dateController,
+                          decoration: const InputDecoration(
+                            labelText: '日期',
+                            border: OutlineInputBorder(),
+                            suffixIcon: Icon(Icons.calendar_today),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  _EditAutocomplete(
-                    label: '类别',
-                    hint: '输入或选择类别',
-                    controller: categoryController,
-                    options: _uniqueCategories,
-                    onSelected: (selection) {
-                      categoryController.text = selection;
-                      categoryController.selection = TextSelection.fromPosition(TextPosition(offset: selection.length));
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _EditAutocomplete(
-                    label: '工作内容',
-                    hint: '输入或选择工作内容',
-                    controller: workContentController,
-                    options: _uniqueWorkContents,
-                    onSelected: (selection) {
-                      workContentController.text = selection;
-                      workContentController.selection = TextSelection.fromPosition(TextPosition(offset: selection.length));
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: amountController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: '金额',
-                      border: OutlineInputBorder(),
-                      prefixText: '¥ ',
+                    const SizedBox(height: 16),
+                    _EditAutocomplete(
+                      label: '类别',
+                      hint: '输入或选择类别',
+                      controller: categoryController,
+                      options: _uniqueCategories,
+                      onSelected: (selection) {
+                        categoryController.text = selection;
+                        categoryController.selection = TextSelection.fromPosition(TextPosition(offset: selection.length));
+                      },
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    _EditAutocomplete(
+                      label: '工作内容',
+                      hint: '输入或选择工作内容',
+                      controller: workContentController,
+                      options: _uniqueWorkContents,
+                      onSelected: (selection) {
+                        workContentController.text = selection;
+                        workContentController.selection = TextSelection.fromPosition(TextPosition(offset: selection.length));
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: amountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: '金额',
+                        border: OutlineInputBorder(),
+                        prefixText: '¥ ',
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (dialogContext) => AlertDialog(
-                    title: const Text('确认删除'),
-                    content: const Text('确定要删除这条记录吗？'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(dialogContext),
-                        child: const Text('取消'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(dialogContext);
-                          Navigator.pop(context);
-                          widget.onDelete(record.id);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('记录已删除')),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                        child: const Text('删除'),
-                      ),
-                    ],
-                  ),
-                );
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('删除'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (workContentController.text.isEmpty || amountController.text.isEmpty || categoryController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('请填写完整信息')),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: const Text('确认删除'),
+                      content: const Text('确定要删除这条记录吗？'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text('取消'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(dialogContext);
+                            Navigator.pop(context);
+                            widget.onDelete(record.id);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('记录已删除')),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                          child: const Text('删除'),
+                        ),
+                      ],
+                    ),
                   );
-                  return;
-                }
+                },
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('删除'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (workContentController.text.isEmpty || amountController.text.isEmpty || categoryController.text.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('请填写完整信息')),
+                    );
+                    return;
+                  }
 
-                final double? amount = double.tryParse(amountController.text);
-                if (amount == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('请输入有效的金额')),
+                  final double? amount = double.tryParse(amountController.text);
+                  if (amount == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('请输入有效的金额')),
+                    );
+                    return;
+                  }
+
+                  String? finalImageUrl = imageUrl;
+                  if (selectedImage != null) {
+                    try {
+                      finalImageUrl = await ApiService.uploadImage(selectedImage!);
+                    } catch (e) {
+                      print('Error uploading image: $e');
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('图片上传失败: $e')),
+                      );
+                      return;
+                    }
+                  }
+
+                  final updatedRecord = Record(
+                    id: record.id,
+                    date: selectedDate,
+                    workContent: workContentController.text,
+                    amount: amount,
+                    category: categoryController.text,
+                    ledger: record.ledger,
+                    imageUrl: finalImageUrl,
                   );
-                  return;
-                }
 
-                final updatedRecord = Record(
-                  id: record.id,
-                  date: selectedDate,
-                  workContent: workContentController.text,
-                  amount: amount,
-                  category: categoryController.text,
-                  ledger: record.ledger,
-                );
-
-                widget.onUpdate(updatedRecord);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('记录已更新')),
-                );
-              },
-              child: const Text('保存'),
-            ),
-          ],
-        ),
+                  widget.onUpdate(updatedRecord);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('记录已更新')),
+                  );
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -835,42 +991,65 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                               vertical: 8,
                             ),
                             color: isSelected ? Colors.blue.shade50 : null,
-                            child: ListTile(
-                              onTap: _isCalculateMode ? null : () => _editRecord(record),
-                              leading: _isCalculateMode
-                                  ? Checkbox(
-                                      value: isSelected,
-                                      onChanged: (_) {
-                                        _toggleRecordSelection(record.id);
+                            child: Column(
+                              children: [
+                                if (record.imageUrl != null && record.imageUrl!.isNotEmpty)
+                                  ClipRRect(
+                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                                    child: Image.network(
+                                      record.imageUrl!,
+                                      height: 150,
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return Container(
+                                          height: 150,
+                                          color: Colors.grey.shade200,
+                                          child: const Center(
+                                            child: Icon(Icons.broken_image, color: Colors.grey),
+                                          ),
+                                        );
                                       },
-                                    )
-                                  : null,
-                              title: Text(record.workContent),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(DateFormat('yyyy-MM-dd').format(record.date)),
-                                  Text(
-                                    record.category,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
                                     ),
                                   ),
-                                ],
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '¥${record.amount.toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                ListTile(
+                                  onTap: _isCalculateMode ? null : () => _editRecord(record),
+                                  leading: _isCalculateMode
+                                      ? Checkbox(
+                                          value: isSelected,
+                                          onChanged: (_) {
+                                            _toggleRecordSelection(record.id);
+                                          },
+                                        )
+                                      : null,
+                                  title: Text(record.workContent),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(DateFormat('yyyy-MM-dd').format(record.date)),
+                                      Text(
+                                        record.category,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '¥${record.amount.toStringAsFixed(2)}',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           );
                         },

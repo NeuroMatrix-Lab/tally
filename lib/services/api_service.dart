@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/record.dart';
@@ -19,7 +20,7 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => Record.fromJson(json)).toList();
+        return data.map((json) => Record.fromMap(json)).toList();
       } else {
         throw Exception('Failed to load records: ${response.statusCode}');
       }
@@ -56,7 +57,7 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => Record.fromJson(json)).toList();
+        return data.map((json) => Record.fromMap(json)).toList();
       } else {
         throw Exception('Failed to search records: ${response.statusCode}');
       }
@@ -125,12 +126,12 @@ class ApiService {
       final response = await http.post(
         Uri.parse('$baseUrl/records'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode(record.toJson()),
+        body: record.toJson(),
       );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return Record.fromJson(data);
+        return Record.fromMap(data);
       } else {
         throw Exception('Failed to create record: ${response.statusCode}');
       }
@@ -145,12 +146,12 @@ class ApiService {
       final response = await http.put(
         Uri.parse('$baseUrl/records/${record.id}'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode(record.toJson()),
+        body: record.toJson(),
       );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return Record.fromJson(data);
+        return Record.fromMap(data);
       } else {
         throw Exception('Failed to update record: ${response.statusCode}');
       }
@@ -171,6 +172,87 @@ class ApiService {
       }
     } catch (e) {
       throw Exception('Error deleting record: $e');
+    }
+  }
+
+  static Future<List<Record>> getDeletedRecords() async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final response = await http.get(
+        Uri.parse('$baseUrl/deleted-records'),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => Record.fromMap(json)).toList();
+      } else {
+        throw Exception('Failed to load deleted records: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching deleted records: $e');
+    }
+  }
+
+  static Future<Record> restoreDeletedRecord(String recordId) async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final response = await http.post(
+        Uri.parse('$baseUrl/deleted-records/$recordId/restore'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return Record.fromMap(data);
+      } else {
+        throw Exception('Failed to restore record: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error restoring record: $e');
+    }
+  }
+
+  static Future<void> permanentlyDeleteRecord(String recordId) async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final response = await http.delete(
+        Uri.parse('$baseUrl/deleted-records/$recordId'),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to permanently delete record: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error permanently deleting record: $e');
+    }
+  }
+
+  static Future<String> uploadImage(File imageFile) async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/upload'),
+      );
+      
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'file',
+          imageFile.path,
+        ),
+      );
+      
+      final response = await request.send();
+      
+      if (response.statusCode == 200) {
+        final responseBody = await response.stream.bytesToString();
+        final data = json.decode(responseBody);
+        final baseUrlWithoutApi = baseUrl.replaceAll('/api', '');
+        return '$baseUrlWithoutApi${data['imageUrl']}';
+      } else {
+        throw Exception('Failed to upload image: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error uploading image: $e');
     }
   }
 }
