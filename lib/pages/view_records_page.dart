@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/record.dart';
 import '../widgets/custom_date_picker.dart';
 import '../services/api_service.dart';
+import 'ledger_manage_page.dart';
 
 class ViewRecordsPage extends StatefulWidget {
   final List<Record> records;
@@ -20,6 +21,7 @@ class ViewRecordsPage extends StatefulWidget {
   final Function(String) onLedgerChanged;
   final Function(String) onAddLedger;
   final Function(int) onExport;
+  final Function(List<String>)? onLedgersUpdated;
 
   const ViewRecordsPage({
     super.key, 
@@ -33,6 +35,7 @@ class ViewRecordsPage extends StatefulWidget {
     required this.onLedgerChanged,
     required this.onAddLedger,
     required this.onExport,
+    this.onLedgersUpdated,
   });
 
   @override
@@ -110,9 +113,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
   Widget _buildLedgerSelector() {
     return GestureDetector(
       onTap: () {
-        if (widget.ledgers.isNotEmpty) {
-          _showLedgerOverlay();
-        }
+        _showLedgerOverlay();
       },
       child: Container(
         padding: const EdgeInsets.all(12),
@@ -144,6 +145,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
     
+    final itemCount = widget.ledgers.isEmpty ? 2 : widget.ledgers.length + 2;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -152,29 +154,88 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
           width: double.maxFinite,
           child: ListView.builder(
             shrinkWrap: true,
-            itemCount: widget.ledgers.length + 1,
+            itemCount: itemCount,
             itemBuilder: (context, index) {
-              if (index == widget.ledgers.length) {
+              if (widget.ledgers.isEmpty) {
+                if (index == 0) {
+                  return ListTile(
+                    leading: const Icon(Icons.add, color: Colors.blue),
+                    title: const Text('添加账本', style: TextStyle(color: Colors.blue)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showAddLedgerDialog();
+                    },
+                  );
+                } else if (index == 1) {
+                  return ListTile(
+                    leading: const Icon(Icons.settings, color: Colors.orange),
+                    title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => LedgerManagePage(
+                            ledgers: widget.ledgers,
+                            defaultLedger: widget.defaultLedger,
+                            onLedgersUpdated: (updatedLedgers) {
+                              if (widget.onLedgersUpdated != null) {
+                                widget.onLedgersUpdated!(updatedLedgers);
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                }
+              } else {
+                if (index == widget.ledgers.length) {
+                  return ListTile(
+                    leading: const Icon(Icons.add, color: Colors.blue),
+                    title: const Text('添加账本', style: TextStyle(color: Colors.blue)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showAddLedgerDialog();
+                    },
+                  );
+                }
+                if (index == widget.ledgers.length + 1) {
+                  return ListTile(
+                    leading: const Icon(Icons.settings, color: Colors.orange),
+                    title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => LedgerManagePage(
+                            ledgers: widget.ledgers,
+                            defaultLedger: widget.defaultLedger,
+                            onLedgersUpdated: (updatedLedgers) {
+                              if (widget.onLedgersUpdated != null) {
+                                widget.onLedgersUpdated!(updatedLedgers);
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                }
+                final ledger = widget.ledgers[index];
                 return ListTile(
-                  leading: const Icon(Icons.add, color: Colors.blue),
-                  title: const Text('添加账本', style: TextStyle(color: Colors.blue)),
+                  title: Text(ledger),
+                  trailing: widget.defaultLedger == ledger
+                      ? const Icon(Icons.check, color: Colors.green)
+                      : null,
                   onTap: () {
+                    widget.onLedgerChanged(ledger);
                     Navigator.pop(context);
-                    _showAddLedgerDialog();
                   },
                 );
               }
-              final ledger = widget.ledgers[index];
-              return ListTile(
-                title: Text(ledger),
-                trailing: widget.defaultLedger == ledger
-                    ? const Icon(Icons.check, color: Colors.green)
-                    : null,
-                onTap: () {
-                  widget.onLedgerChanged(ledger);
-                  Navigator.pop(context);
-                },
-              );
+              return const SizedBox.shrink();
             },
           ),
         ),
@@ -745,13 +806,14 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                             height: 16,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: Colors.purple,
                             ),
                           )
                         : const Icon(Icons.refresh, size: 18),
                     label: const Text('更新'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purple,
+                      backgroundColor: Colors.purple.shade100,
+                      foregroundColor: Colors.purple.shade800,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                       minimumSize: const Size(0, 32),
                     ),
@@ -762,7 +824,8 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                     icon: Icon(_isCalculateMode ? Icons.close : Icons.calculate, size: 18),
                     label: Text(_isCalculateMode ? '取消计算' : '选择&计算'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _isCalculateMode ? Colors.red : Colors.blue,
+                      backgroundColor: _isCalculateMode ? Colors.red.shade100 : Colors.blue.shade100,
+                      foregroundColor: _isCalculateMode ? Colors.red.shade800 : Colors.blue.shade800,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                       minimumSize: const Size(0, 32),
                     ),
@@ -773,7 +836,8 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                     icon: const Icon(Icons.file_download, size: 18),
                     label: const Text('导出'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
+                      backgroundColor: Colors.green.shade100,
+                      foregroundColor: Colors.green.shade800,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                       minimumSize: const Size(0, 32),
                     ),
@@ -786,7 +850,8 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                     icon: const Icon(Icons.delete_outline, size: 18),
                     label: const Text('回收站'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
+                      backgroundColor: Colors.orange.shade100,
+                      foregroundColor: Colors.orange.shade800,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                       minimumSize: const Size(0, 32),
                     ),
