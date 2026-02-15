@@ -54,17 +54,35 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
   List<Record> _serverRecords = [];
   bool _isLoading = false;
   String? _selectedLedger;
+  String _searchKeyword = '';
+  bool _showFilters = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedLedger = widget.defaultLedger;
+  }
 
   List<Record> get _filteredRecords {
     if (_isLoading) {
       return [];
     }
 
-    if (_serverRecords.isNotEmpty) {
+    // 如果正在进行服务器搜索，优先显示服务器结果
+    if (_serverRecords.isNotEmpty && (_startDate != null || _endDate != null || _selectedCategory != null)) {
       return _serverRecords;
     }
 
     var filtered = widget.records;
+
+    if (_searchKeyword.isNotEmpty) {
+      final keyword = _searchKeyword.toLowerCase();
+      filtered = filtered.where((record) {
+        return record.workContent.toLowerCase().contains(keyword) ||
+            record.category.toLowerCase().contains(keyword) ||
+            record.amount.toString().contains(keyword);
+      }).toList();
+    }
 
     if (_startDate != null && _endDate != null) {
       filtered = filtered.where((record) {
@@ -347,7 +365,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
         startDate: startDate,
         endDate: endDate,
         category: _selectedCategory,
-        ledger: widget.defaultLedger,
+        ledger: _selectedLedger,
       );
 
       if (mounted) {
@@ -372,7 +390,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
     });
 
     try {
-      final records = await ApiService.getRecentRecords(months: 3);
+      final records = await ApiService.getRecentRecords(months: 12);
 
       if (mounted) {
         setState(() {
@@ -802,205 +820,259 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _refreshFromServer,
-                    icon: _isLoading 
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.purple,
-                            ),
-                          )
-                        : const Icon(Icons.refresh, size: 18),
-                    label: const Text('更新'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purple.shade100,
-                      foregroundColor: Colors.purple.shade800,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                      minimumSize: const Size(0, 32),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  ElevatedButton.icon(
-                    onPressed: _toggleCalculateMode,
-                    icon: Icon(_isCalculateMode ? Icons.close : Icons.calculate, size: 18),
-                    label: Text(_isCalculateMode ? '取消计算' : '选择&计算'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isCalculateMode ? Colors.red.shade100 : Colors.blue.shade100,
-                      foregroundColor: _isCalculateMode ? Colors.red.shade800 : Colors.blue.shade800,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                      minimumSize: const Size(0, 32),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  ElevatedButton.icon(
-                    onPressed: _exportToExcel,
-                    icon: const Icon(Icons.file_download, size: 18),
-                    label: const Text('导出'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade100,
-                      foregroundColor: Colors.green.shade800,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                      minimumSize: const Size(0, 32),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pushNamed(context, '/recycle_bin');
-                    },
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('回收站'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange.shade100,
-                      foregroundColor: Colors.orange.shade800,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                      minimumSize: const Size(0, 32),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _buildLedgerSelector(),
-              const SizedBox(height: 16),
-              Row(
                 children: [
                   Expanded(
-                    child: GestureDetector(
-                      onTap: _selectStartDate,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _startDate == null
-                                    ? '开始日期'
-                                    : DateFormat('yyyy-MM-dd').format(_startDate!),
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ),
-                            if (_startDate != null)
-                              IconButton(
-                                icon: const Icon(Icons.clear, size: 20),
-                                onPressed: () {
-                                  setState(() {
-                                    _startDate = null;
-                                    _serverRecords = [];
-                                  });
-                                },
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                            const Icon(Icons.calendar_today, size: 20),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: _selectEndDate,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _endDate == null
-                                    ? '结束日期'
-                                    : DateFormat('yyyy-MM-dd').format(_endDate!),
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ),
-                            if (_endDate != null)
-                              IconButton(
-                                icon: const Icon(Icons.clear, size: 20),
-                                onPressed: () {
-                                  setState(() {
-                                    _endDate = null;
-                                    _serverRecords = [];
-                                  });
-                                },
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                            const Icon(Icons.calendar_today, size: 20),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text(
-                          '类别',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey),
+                    child: InkWell(
+                      onTap: () {
+                        if (!_showFilters) {
+                          setState(() {
+                            _showFilters = true;
+                          });
+                        }
+                      },
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: '搜索账目...',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              isExpanded: true,
-                              hint: const Text('全部'),
-                              value: _selectedCategory,
-                              items: [
-                                const DropdownMenuItem<String>(
-                                  value: null,
-                                  child: Text('全部'),
-                                ),
-                                ..._uniqueCategories.map((category) {
-                                  return DropdownMenuItem<String>(
-                                    value: category,
-                                    child: Text(category),
-                                  );
-                                }),
-                              ],
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedCategory = value;
-                                  _serverRecords = [];
-                                });
-                                _searchFromServer();
-                              },
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          suffixIcon: _searchKeyword.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    setState(() {
+                                      _searchKeyword = '';
+                                    });
+                                  },
+                                )
+                              : null,
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            _searchKeyword = value;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _showFilters = !_showFilters;
+                      });
+                    },
+                    icon: Icon(
+                      _showFilters ? Icons.expand_less : Icons.expand_more,
+                      color: _showFilters ? Colors.blue : Colors.grey,
+                    ),
+                    tooltip: '筛选',
+                  ),
+                ],
+              ),
+              AnimatedCrossFade(
+                duration: const Duration(milliseconds: 300),
+                crossFadeState: _showFilters ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                firstChild: const SizedBox.shrink(),
+                secondChild: Column(
+                  children: [
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _isLoading ? null : _refreshFromServer,
+                          icon: _isLoading 
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.purple,
+                                  ),
+                                )
+                              : const Icon(Icons.refresh, size: 18),
+                          label: const Text('更新'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.purple.shade100,
+                            foregroundColor: Colors.purple.shade800,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            minimumSize: const Size(0, 32),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        ElevatedButton.icon(
+                          onPressed: _toggleCalculateMode,
+                          icon: Icon(_isCalculateMode ? Icons.close : Icons.calculate, size: 18),
+                          label: Text(_isCalculateMode ? '取消计算' : '选择&计算'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isCalculateMode ? Colors.red.shade100 : Colors.blue.shade100,
+                            foregroundColor: _isCalculateMode ? Colors.red.shade800 : Colors.blue.shade800,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            minimumSize: const Size(0, 32),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        ElevatedButton.icon(
+                          onPressed: _exportToExcel,
+                          icon: const Icon(Icons.file_download, size: 18),
+                          label: const Text('导出'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green.shade100,
+                            foregroundColor: Colors.green.shade800,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            minimumSize: const Size(0, 32),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pushNamed(context, '/recycle_bin');
+                          },
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          label: const Text('回收站'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange.shade100,
+                            foregroundColor: Colors.orange.shade800,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            minimumSize: const Size(0, 32),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildLedgerSelector(),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _showFilters ? _selectStartDate : null,
+                            child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              height: 48,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _startDate == null
+                                          ? '开始日期'
+                                          : DateFormat('dd').format(_startDate!),
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                  ),
+                                  if (_startDate != null)
+                                    IconButton(
+                                      icon: const Icon(Icons.clear, size: 20),
+                                      onPressed: () {
+                                        setState(() {
+                                          _startDate = null;
+                                          _serverRecords = [];
+                                        });
+                                      },
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+                                  const Icon(Icons.calendar_today, size: 20),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _showFilters ? _selectEndDate : null,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              height: 48,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _endDate == null
+                                          ? '结束日期'
+                                          : DateFormat('dd').format(_endDate!),
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                  ),
+                                  if (_endDate != null)
+                                    IconButton(
+                                      icon: const Icon(Icons.clear, size: 20),
+                                      onPressed: () {
+                                        setState(() {
+                                          _endDate = null;
+                                          _serverRecords = [];
+                                        });
+                                        _searchFromServer();
+                                      },
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+                                  const Icon(Icons.calendar_today, size: 20),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            height: 48,
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                isExpanded: true,
+                                hint: const Text('全部类别'),
+                                value: _selectedCategory,
+                                itemHeight: 48,
+                                items: [
+                                  const DropdownMenuItem<String>(
+                                    value: null,
+                                    child: Text('全部'),
+                                  ),
+                                  ..._uniqueCategories.map((category) {
+                                    return DropdownMenuItem<String>(
+                                      value: category,
+                                      child: Text(category),
+                                    );
+                                  }),
+                                ],
+                                onChanged: (value) {
+                                  setState(() {
+                                    _selectedCategory = value;
+                                    _serverRecords = [];
+                                  });
+                                  _searchFromServer();
+                                },
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
+                    if (_isCalculateMode) ...[
+                    ],
+                  ],
+                ),
               ),
-              if (_isCalculateMode) ...[
-              ],
             ],
           ),
         ),
@@ -1016,12 +1088,24 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              '总计:',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '总计:',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  '${_filteredRecords.length} 条账目',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
                             ),
                             Text(
                               '¥${_totalAmount.toStringAsFixed(2)}',
