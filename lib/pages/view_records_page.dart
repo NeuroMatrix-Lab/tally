@@ -22,6 +22,7 @@ class ViewRecordsPage extends StatefulWidget {
   final Function(String) onAddLedger;
   final Function(int) onExport;
   final Function(List<String>)? onLedgersUpdated;
+  final Function()? onSync;
 
   const ViewRecordsPage({
     super.key, 
@@ -36,6 +37,7 @@ class ViewRecordsPage extends StatefulWidget {
     required this.onAddLedger,
     required this.onExport,
     this.onLedgersUpdated,
+    this.onSync,
   });
 
   @override
@@ -51,6 +53,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
   final Set<String> _selectedRecordIds = {};
   List<Record> _serverRecords = [];
   bool _isLoading = false;
+  String? _selectedLedger;
 
   List<Record> get _filteredRecords {
     if (_isLoading) {
@@ -95,6 +98,12 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
           .toList();
     }
 
+    if (_selectedLedger != null) {
+      filtered = filtered
+          .where((record) => record.ledger == _selectedLedger)
+          .toList();
+    }
+
     return filtered..sort((a, b) => b.date.compareTo(a.date));
   }
 
@@ -111,6 +120,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
   }
 
   Widget _buildLedgerSelector() {
+    final displayLedger = _selectedLedger ?? '全部账本';
     return GestureDetector(
       onTap: () {
         _showLedgerOverlay();
@@ -126,10 +136,10 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
           children: [
             Expanded(
               child: Text(
-                widget.defaultLedger.isEmpty ? '选择账本' : widget.defaultLedger,
+                displayLedger,
                 style: TextStyle(
                   fontSize: 14,
-                  color: widget.defaultLedger.isEmpty ? Colors.grey : Colors.black,
+                  color: displayLedger == '全部账本' ? Colors.grey : Colors.black,
                 ),
               ),
             ),
@@ -145,7 +155,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
     
-    final itemCount = widget.ledgers.isEmpty ? 2 : widget.ledgers.length + 2;
+    final itemCount = widget.ledgers.isEmpty ? 1 : widget.ledgers.length + 2;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -157,46 +167,39 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
             itemCount: itemCount,
             itemBuilder: (context, index) {
               if (widget.ledgers.isEmpty) {
+                return ListTile(
+                  leading: const Icon(Icons.settings, color: Colors.orange),
+                  title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => LedgerManagePage(
+                          ledgers: widget.ledgers,
+                          defaultLedger: widget.defaultLedger,
+                          onLedgersUpdated: (updatedLedgers) {
+                            if (widget.onLedgersUpdated != null) {
+                              widget.onLedgersUpdated!(updatedLedgers);
+                            }
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                );
+              } else {
                 if (index == 0) {
                   return ListTile(
-                    leading: const Icon(Icons.add, color: Colors.blue),
-                    title: const Text('添加账本', style: TextStyle(color: Colors.blue)),
+                    title: const Text('全部账本'),
+                    trailing: _selectedLedger == null
+                        ? const Icon(Icons.check, color: Colors.green)
+                        : null,
                     onTap: () {
+                      setState(() {
+                        _selectedLedger = null;
+                      });
                       Navigator.pop(context);
-                      _showAddLedgerDialog();
-                    },
-                  );
-                } else if (index == 1) {
-                  return ListTile(
-                    leading: const Icon(Icons.settings, color: Colors.orange),
-                    title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
-                    onTap: () async {
-                      Navigator.pop(context);
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => LedgerManagePage(
-                            ledgers: widget.ledgers,
-                            defaultLedger: widget.defaultLedger,
-                            onLedgersUpdated: (updatedLedgers) {
-                              if (widget.onLedgersUpdated != null) {
-                                widget.onLedgersUpdated!(updatedLedgers);
-                              }
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                }
-              } else {
-                if (index == widget.ledgers.length) {
-                  return ListTile(
-                    leading: const Icon(Icons.add, color: Colors.blue),
-                    title: const Text('添加账本', style: TextStyle(color: Colors.blue)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showAddLedgerDialog();
                     },
                   );
                 }
@@ -223,14 +226,16 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                     },
                   );
                 }
-                final ledger = widget.ledgers[index];
+                final ledger = widget.ledgers[index - 1];
                 return ListTile(
                   title: Text(ledger),
-                  trailing: widget.defaultLedger == ledger
+                  trailing: _selectedLedger == ledger
                       ? const Icon(Icons.check, color: Colors.green)
                       : null,
                   onTap: () {
-                    widget.onLedgerChanged(ledger);
+                    setState(() {
+                      _selectedLedger = ledger;
+                    });
                     Navigator.pop(context);
                   },
                 );
@@ -374,6 +379,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
           _serverRecords = records;
           _isLoading = false;
         });
+        widget.onSync?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('已从服务器更新数据')),
         );
@@ -994,22 +1000,6 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                 ],
               ),
               if (_isCalculateMode) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    TextButton.icon(
-                      onPressed: _selectAll,
-                      icon: const Icon(Icons.select_all),
-                      label: const Text('全选'),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      onPressed: _deselectAll,
-                      icon: const Icon(Icons.deselect),
-                      label: const Text('取消全选'),
-                    ),
-                  ],
-                ),
               ],
             ],
           ),
