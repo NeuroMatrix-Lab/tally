@@ -370,6 +370,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _updateRecord(Record updatedRecord) async {
+    // 先更新本地状态
     setState(() {
       final index = _records.indexWhere((record) => record.id == updatedRecord.id);
       if (index != -1) {
@@ -379,11 +380,36 @@ class _HomePageState extends State<HomePage> {
     _saveRecords();
     _addOperationLog('编辑', '编辑记录', details: '工作内容: ${updatedRecord.workContent}, 金额: ¥${updatedRecord.amount}, 类别: ${updatedRecord.category}');
     
+    // 尝试上传到服务器
     try {
+      print('🔄 开始上传修改的记录到服务器...');
       await ApiService.updateRecord(updatedRecord);
+      print('✅ 记录上传成功');
+      
+      // 重新同步服务器数据
       await _syncFromServer();
+      
+      // 显示成功消息
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ 记录已更新并同步到服务器'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
-      print('Error updating record on server: $e');
+      print('❌ 记录上传失败: $e');
+      
+      // 显示错误消息
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ 记录更新失败: ${e.toString().split(':').first}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
