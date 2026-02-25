@@ -50,7 +50,6 @@ class Record {
     try {
       dateValue = DateTime.parse(map['date'].toString());
     } catch (e) {
-      print('❌ 日期解析失败: ${map['date']}, 错误: $e');
       dateValue = DateTime.now();
     }
     
@@ -75,7 +74,6 @@ class Record {
         try {
           staffIds = List<String>.from(json.decode(map['staffIds']));
         } catch (e) {
-          print('❌ staffIds JSON解析失败: $e');
           staffIds = [];
         }
       }
