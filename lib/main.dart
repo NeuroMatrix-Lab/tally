@@ -164,8 +164,11 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _isSyncing = true;
     });
-
+    
     try {
+      // 先测试连接状态
+      await _testServerConnection();
+      
       final records = await ApiService.getRecentRecords(months: 3);
       final ledgers = await ApiService.syncLedgers();
       if (mounted) {
@@ -189,6 +192,26 @@ class _HomePageState extends State<HomePage> {
           _isServerConnected = false;
         });
       }
+    }
+  }
+  
+  // 测试服务器连接状态
+  Future<void> _testServerConnection() async {
+    try {
+      // 简单的连接测试
+      await ApiService.syncLedgers().timeout(const Duration(seconds: 5));
+      if (mounted) {
+        setState(() {
+          _isServerConnected = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isServerConnected = false;
+        });
+      }
+      throw e;
     }
   }
 

@@ -99,10 +99,10 @@ class RecordListWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (records.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           '暂无记录',
-          style: TextStyle(color: Colors.grey, fontSize: 16),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(153), fontSize: 16),
         ),
       );
     }

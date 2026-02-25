@@ -38,6 +38,8 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
   String? _selectedStaff;
   String _searchKeyword = '';
   bool _showFilters = false;
+  Set<String> _selectedRecordIds = {};
+  bool _selectionMode = false;
 
   @override
   void initState() {
@@ -166,7 +168,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       margin: const EdgeInsets.only(top: 16, bottom: 8),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+        color: Theme.of(context).colorScheme.primary.withAlpha(25),
         border: Border(
           left: BorderSide(
             color: Theme.of(context).colorScheme.primary,
@@ -212,7 +214,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  color: Theme.of(context).colorScheme.primary.withAlpha(25),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -240,7 +242,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                       '类别: ${record.category}',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -248,7 +250,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                       '参与人员: ${_getStaffNames(record.staffIds)}',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -273,7 +275,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                     record.ledger,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -335,7 +337,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                     style: TextStyle(
                       color: _startDate != null 
                           ? Theme.of(context).colorScheme.onSurface
-                          : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          : Theme.of(context).colorScheme.onSurface.withAlpha(153),
                     ),
                   ),
                   const Icon(Icons.calendar_today, size: 16),
@@ -364,7 +366,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                     style: TextStyle(
                       color: _endDate != null 
                           ? Theme.of(context).colorScheme.onSurface
-                          : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          : Theme.of(context).colorScheme.onSurface.withAlpha(153),
                     ),
                   ),
                   const Icon(Icons.calendar_today, size: 16),
@@ -392,7 +394,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
       items: [
         DropdownMenuItem(
           value: null,
-          child: Text(hintText, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6))),
+          child: Text(hintText, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(153))),
         ),
         ...options.map((option) {
           return DropdownMenuItem(
@@ -481,7 +483,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                 style: TextStyle(
                   fontSize: 14,
                   color: displayLedger == '全部账本' 
-                      ? Theme.of(context).colorScheme.onSurface.withOpacity(0.6)
+                      ? Theme.of(context).colorScheme.onSurface.withAlpha(153)
                       : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
@@ -602,7 +604,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
           TextField(
             decoration: InputDecoration(
               hintText: '搜索工作内容、类别、金额、参与人员...',
-              prefixIcon: Icon(Icons.search, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
+              prefixIcon: Icon(Icons.search, color: Theme.of(context).colorScheme.onSurface.withAlpha(153)),
               border: OutlineInputBorder(
                 borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
               ),
@@ -633,6 +635,13 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
             _buildDateFilter(),
             const SizedBox(height: 12),
             _buildDropdownFilter(
+              value: _selectedLedger,
+              options: ['全部账本'] + widget.ledgers,
+              hintText: '选择账本',
+              onChanged: (value) => setState(() => _selectedLedger = value == '全部账本' ? null : value),
+            ),
+            const SizedBox(height: 12),
+            _buildDropdownFilter(
               value: _selectedCategory,
               options: _uniqueCategories,
               hintText: '选择类别',
@@ -648,36 +657,37 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
             const SizedBox(height: 12),
           ],
           
-          // 账本选择器
-          _buildLedgerSelector(),
-          
           const SizedBox(height: 16),
           
-          // 统计信息
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '总记录数: ${_filteredRecords.length}',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
+          // 选择并计算功能
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _showSelectionCalculation(),
+                  icon: const Icon(Icons.calculate),
+                  label: const Text('选择并计算'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
-                Text(
-                  '总金额: ¥${_filteredRecords.fold(0.0, (sum, record) => sum + record.amount).toStringAsFixed(2)}',
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${_filteredRecords.length}条记录',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
           
           const SizedBox(height: 16),
@@ -689,7 +699,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                     child: Text(
                       '暂无记录',
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
                         fontSize: 16,
                       ),
                     ),
@@ -717,6 +727,156 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+  
+  // 显示选择计算对话框
+  void _showSelectionCalculation() {
+    setState(() {
+      _selectionMode = true;
+      _selectedRecordIds.clear();
+    });
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final selectedRecords = _filteredRecords.where((record) => _selectedRecordIds.contains(record.id)).toList();
+          final totalAmount = selectedRecords.fold(0.0, (sum, record) => sum + record.amount);
+          
+          return AlertDialog(
+            title: const Text('选择并计算'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 选择模式说明
+                  Text(
+                    '请选择要计算的记录（已选择 ${selectedRecords.length} 条）',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // 记录列表
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 300),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _filteredRecords.length,
+                      itemBuilder: (context, index) {
+                        final record = _filteredRecords[index];
+                        final isSelected = _selectedRecordIds.contains(record.id);
+                        
+                        return CheckboxListTile(
+                          value: isSelected,
+                          onChanged: (value) {
+                            setDialogState(() {
+                              if (value == true) {
+                                _selectedRecordIds.add(record.id);
+                              } else {
+                                _selectedRecordIds.remove(record.id);
+                              }
+                            });
+                          },
+                          title: Text(
+                            record.workContent,
+                            style: TextStyle(
+                              fontSize: 14,
+                              decoration: isSelected ? TextDecoration.lineThrough : null,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '¥${record.amount.toStringAsFixed(2)} - ${_formatDate(record.date)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                            ),
+                          ),
+                          secondary: Text(
+                            '¥${record.amount.toStringAsFixed(2)}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // 统计信息
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '已选择: ${selectedRecords.length}条',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                        Text(
+                          '总计: ¥${totalAmount.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  setDialogState(() {
+                    _selectedRecordIds.clear();
+                  });
+                },
+                child: const Text('清空选择'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _selectionMode = false;
+                    _selectedRecordIds.clear();
+                  });
+                },
+                child: const Text('取消'),
+              ),
+              ElevatedButton(
+                onPressed: selectedRecords.isEmpty ? null : () {
+                  // 可以在这里添加导出或其他操作
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('已计算 ${selectedRecords.length} 条记录，总计 ¥${totalAmount.toStringAsFixed(2)}'),
+                    ),
+                  );
+                  Navigator.pop(context);
+                  setState(() {
+                    _selectionMode = false;
+                    _selectedRecordIds.clear();
+                  });
+                },
+                child: const Text('确认计算'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

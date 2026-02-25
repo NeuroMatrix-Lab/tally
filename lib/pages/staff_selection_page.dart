@@ -75,7 +75,9 @@ class _StaffSelectionPageState extends State<StaffSelectionPage> {
 
     if (result != null && mounted) {
       try {
-        await ApiService.addStaff(result);
+        // 创建Staff对象
+        final newStaff = Staff(id: '', name: result);
+        await ApiService.addStaff(newStaff);
         // 重新从服务器获取人员列表
         final updatedStaffList = await ApiService.getStaffList();
         setState(() {
@@ -127,7 +129,9 @@ class _StaffSelectionPageState extends State<StaffSelectionPage> {
 
     if (result != null && mounted) {
       try {
-        await ApiService.updateStaff(staff.id, result);
+        // 创建更新后的Staff对象
+        final updatedStaff = Staff(id: staff.id, name: result);
+        await ApiService.updateStaff(updatedStaff);
         // 重新从服务器获取人员列表
         final updatedStaffList = await ApiService.getStaffList();
         setState(() {
