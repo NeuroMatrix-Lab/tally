@@ -50,7 +50,21 @@ class ApiService {
         if (row['date'] is DateTime) {
           dateString = (row['date'] as DateTime).toIso8601String();
         } else if (row['date'] is String) {
-          dateString = row['date'];
+          // 如果是MySQL格式的字符串，需要转换为ISO格式
+          final mysqlDate = row['date'] as String;
+          try {
+            // 尝试解析MySQL格式 (YYYY-MM-DD HH:MM:SS)
+            final parts = mysqlDate.split(' ');
+            if (parts.length == 2) {
+              final datePart = parts[0];
+              final timePart = parts[1];
+              dateString = '${datePart}T${timePart}Z';
+            } else {
+              dateString = mysqlDate;
+            }
+          } catch (e) {
+            dateString = DateTime.now().toIso8601String();
+          }
         } else {
           dateString = DateTime.now().toIso8601String();
         }
@@ -116,7 +130,21 @@ class ApiService {
         if (row['date'] is DateTime) {
           dateString = (row['date'] as DateTime).toIso8601String();
         } else if (row['date'] is String) {
-          dateString = row['date'];
+          // 如果是MySQL格式的字符串，需要转换为ISO格式
+          final mysqlDate = row['date'] as String;
+          try {
+            // 尝试解析MySQL格式 (YYYY-MM-DD HH:MM:SS)
+            final parts = mysqlDate.split(' ');
+            if (parts.length == 2) {
+              final datePart = parts[0];
+              final timePart = parts[1];
+              dateString = '${datePart}T${timePart}Z';
+            } else {
+              dateString = mysqlDate;
+            }
+          } catch (e) {
+            dateString = DateTime.now().toIso8601String();
+          }
         } else {
           dateString = DateTime.now().toIso8601String();
         }
@@ -237,25 +265,54 @@ class ApiService {
   }
 
   // 更新记录
+  // 格式化日期为MySQL兼容格式
+  static String _formatDateForMySQL(DateTime date) {
+    // MySQL兼容的日期时间格式: YYYY-MM-DD HH:MM:SS
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    final second = date.second.toString().padLeft(2, '0');
+    
+    return '$year-$month-$day $hour:$minute:$second';
+  }
+
   static Future<Record> updateRecord(Record record) async {
     final conn = await _getConnection();
     try {
+      print('🔧 更新记录: ID=${record.id}, 内容=${record.workContent}, 金额=${record.amount}');
+      
+      // 处理ID字段 - 可能是字符串或数字
+      dynamic recordId;
+      if (record.id is int) {
+        recordId = record.id;
+      } else if (record.id is String) {
+        recordId = int.tryParse(record.id) ?? record.id;
+      } else {
+        recordId = record.id;
+      }
+      
       await conn.query('''
         UPDATE records 
         SET date = ?, category = ?, work_content = ?, amount = ?, ledger = ?, image_url = ?, staff_ids = ?
         WHERE id = ?
       ''', [
-        record.date.toIso8601String(),
+        _formatDateForMySQL(record.date),
         record.category,
         record.workContent,
         record.amount,
         record.ledger,
         record.imageUrl,
         json.encode(record.staffIds),
-        int.parse(record.id),
+        recordId,
       ]);
       
+      print('✅ 记录更新成功');
       return record;
+    } catch (e) {
+      print('❌ 更新记录失败: $e');
+      rethrow;
     } finally {
       await conn.close();
     }
