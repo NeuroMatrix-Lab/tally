@@ -9,7 +9,15 @@ import 'staff_selection_page.dart';
 import '../models/staff.dart';
 
 class AddRecordPage extends StatefulWidget {
-  final Function(DateTime date, String workContent, double amount, String category, List<String> staffIds, {String? imageUrl}) onAdd;
+  final Function(
+    DateTime date,
+    String workContent,
+    double amount,
+    String category,
+    List<String> staffIds, {
+    String? imageUrl,
+  })
+  onAdd;
   final List<String> categories;
   final List<String> workContents;
   final List<String> ledgers;
@@ -21,9 +29,9 @@ class AddRecordPage extends StatefulWidget {
   final Function() onStaffListUpdated;
 
   const AddRecordPage({
-    super.key, 
-    required this.onAdd, 
-    required this.categories, 
+    super.key,
+    required this.onAdd,
+    required this.categories,
     required this.workContents,
     required this.ledgers,
     required this.defaultLedger,
@@ -68,7 +76,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
         source: source,
         imageQuality: 80,
       );
-      
+
       if (pickedFile != null && mounted) {
         setState(() {
           _selectedImage = File(pickedFile.path);
@@ -126,7 +134,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
         ),
       ),
     );
-    
+
     if (result != null && mounted) {
       setState(() {
         _selectedStaffIds = result;
@@ -136,18 +144,20 @@ class _AddRecordPageState extends State<AddRecordPage> {
 
   void _saveRecord() async {
     final category = _categoryController.text.trim();
-    if (_workContentController.text.isEmpty || _amountController.text.isEmpty || category.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写完整信息')),
-      );
+    if (_workContentController.text.isEmpty ||
+        _amountController.text.isEmpty ||
+        category.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请填写完整信息')));
       return;
     }
 
     final double? amount = double.tryParse(_amountController.text);
     if (amount == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入有效的金额')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请输入有效的金额')));
       return;
     }
 
@@ -158,21 +168,28 @@ class _AddRecordPageState extends State<AddRecordPage> {
     String? imageUrl;
     if (_selectedImage != null) {
       try {
-      imageUrl = await ApiService.uploadImage(_selectedImage!);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('图片上传失败: $e')),
-        );
-        setState(() {
-          _isUploading = false;
-        });
+        imageUrl = await ApiService.uploadImage(_selectedImage!);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('图片上传失败: $e')));
+          setState(() {
+            _isUploading = false;
+          });
+        }
+        return;
       }
-      return;
-    }
     }
 
-    widget.onAdd(_selectedDate, _workContentController.text, amount, category, _selectedStaffIds, imageUrl: imageUrl);
+    widget.onAdd(
+      _selectedDate,
+      _workContentController.text,
+      amount,
+      category,
+      _selectedStaffIds,
+      imageUrl: imageUrl,
+    );
     _workContentController.clear();
     _amountController.clear();
     _categoryController.clear();
@@ -182,9 +199,9 @@ class _AddRecordPageState extends State<AddRecordPage> {
       _selectedImage = null;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('记录已保存并上传')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('记录已保存并上传')));
   }
 
   @override
@@ -240,7 +257,10 @@ class _AddRecordPageState extends State<AddRecordPage> {
               if (widget.ledgers.isEmpty) {
                 return ListTile(
                   leading: const Icon(Icons.settings, color: Colors.orange),
-                  title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
+                  title: const Text(
+                    '管理账本',
+                    style: TextStyle(color: Colors.orange),
+                  ),
                   onTap: () async {
                     Navigator.pop(context);
                     final result = await Navigator.push(
@@ -263,7 +283,10 @@ class _AddRecordPageState extends State<AddRecordPage> {
                 if (index == widget.ledgers.length) {
                   return ListTile(
                     leading: const Icon(Icons.settings, color: Colors.orange),
-                    title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
+                    title: const Text(
+                      '管理账本',
+                      style: TextStyle(color: Colors.orange),
+                    ),
                     onTap: () async {
                       Navigator.pop(context);
                       final result = await Navigator.push(
@@ -367,199 +390,201 @@ class _AddRecordPageState extends State<AddRecordPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-          const Text(
-            '添加记录',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildLedgerSelector(),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: GestureDetector(
-                  onTap: _selectDate,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('日期', style: TextStyle(fontSize: 16)),
-                        Row(
-                          children: [
-                            Text(
-                              DateFormat('yyyy-MM-dd').format(_selectedDate),
-                              style: const TextStyle(fontSize: 16),
-                            ),
-                            const Icon(Icons.calendar_today),
-                          ],
-                        ),
-                      ],
+            const Text(
+              '添加记录',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            // 始终水平排列账本和日期
+            Row(
+              children: [
+                Expanded(child: _buildLedgerSelector()),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _selectDate,
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('日期', style: TextStyle(fontSize: 16)),
+                          Text(
+                            DateFormat('yyyy-MM-dd').format(_selectedDate),
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildAutocompleteField(
-            label: '类别',
-            hint: '输入或选择类别',
-            controller: _categoryController,
-            options: widget.categories,
-            onSelected: (selection) {
-              _categoryController.text = selection;
-              _categoryController.selection = TextSelection.fromPosition(TextPosition(offset: selection.length));
-            },
-          ),
-          const SizedBox(height: 16),
-          _buildAutocompleteField(
-            label: '工作内容',
-            hint: '输入或选择工作内容',
-            controller: _workContentController,
-            options: widget.workContents,
-            onSelected: (selection) {
-              _workContentController.text = selection;
-              _workContentController.selection = TextSelection.fromPosition(TextPosition(offset: selection.length));
-            },
-          ),
-          const SizedBox(height: 16),
-          GestureDetector(
-            onTap: _selectStaff,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(Icons.group, color: Colors.grey),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        '参与人员',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Text(
-                        _selectedStaffIds.isEmpty ? '选择人员' : '已选择 ${_selectedStaffIds.length} 人',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: _selectedStaffIds.isEmpty ? Colors.grey : Colors.blue,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                    ],
-                  ),
-                ],
-              ),
+              ],
             ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _amountController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: '金额',
-              border: OutlineInputBorder(),
-              prefixText: '¥ ',
+            const SizedBox(height: 16),
+            _buildAutocompleteField(
+              label: '类别',
+              hint: '输入或选择类别',
+              controller: _categoryController,
+              options: widget.categories,
+              onSelected: (selection) {
+                _categoryController.text = selection;
+                _categoryController.selection = TextSelection.fromPosition(
+                  TextPosition(offset: selection.length),
+                );
+              },
             ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey),
-              borderRadius: BorderRadius.circular(8),
+            const SizedBox(height: 16),
+            _buildAutocompleteField(
+              label: '工作内容',
+              hint: '输入或选择工作内容',
+              controller: _workContentController,
+              options: widget.workContents,
+              onSelected: (selection) {
+                _workContentController.text = selection;
+                _workContentController.selection = TextSelection.fromPosition(
+                  TextPosition(offset: selection.length),
+                );
+              },
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: _selectStaff,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('图片', style: TextStyle(fontSize: 16)),
                     Row(
                       children: [
-                        if (_selectedImage != null)
-                          IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: _removeImage,
-                            tooltip: '删除图片',
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                        ElevatedButton.icon(
-                          onPressed: _showImagePickerDialog,
-                          icon: const Icon(Icons.add_photo_alternate),
-                          label: const Text('选择图片'),
+                          child: const Icon(Icons.group, color: Colors.grey),
+                        ),
+                        const SizedBox(width: 12),
+                        Text('参与人员', style: const TextStyle(fontSize: 16)),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Text(
+                          _selectedStaffIds.isEmpty
+                              ? '选择人员'
+                              : '已选择 ${_selectedStaffIds.length} 人',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: _selectedStaffIds.isEmpty
+                                ? Colors.grey
+                                : Colors.blue,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.arrow_forward_ios,
+                          size: 16,
+                          color: Colors.grey,
                         ),
                       ],
                     ),
                   ],
                 ),
-                if (_selectedImage != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.file(
-                        _selectedImage!,
-                        height: 200,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _amountController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: '金额',
+                border: OutlineInputBorder(),
+                prefixText: '¥ ',
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('图片', style: TextStyle(fontSize: 16)),
+                      Row(
+                        children: [
+                          if (_selectedImage != null)
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: _removeImage,
+                              tooltip: '删除图片',
+                            ),
+                          ElevatedButton.icon(
+                            onPressed: _showImagePickerDialog,
+                            icon: const Icon(Icons.add_photo_alternate),
+                            label: const Text('选择图片'),
+                          ),
+                        ],
                       ),
-                    ),
-                  )
-                else
-                  const Padding(
-                    padding: EdgeInsets.only(top: 12),
-                    child: Text(
-                      '暂无图片',
-                      style: TextStyle(color: Colors.grey),
-                    ),
+                    ],
                   ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: _isUploading ? null : _saveRecord,
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: _isUploading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
+                  if (_selectedImage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          _selectedImage!,
+                          height: 200,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.only(top: 12),
+                      child: Text('暂无图片', style: TextStyle(color: Colors.grey)),
                     ),
-                  )
-                : const Text('保存&上传', style: TextStyle(fontSize: 18)),
-          ),
-        ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _isUploading ? null : _saveRecord,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: _isUploading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('保存&上传', style: TextStyle(fontSize: 18)),
+            ),
+          ],
+        ),
       ),
-    ),
     );
   }
 }
@@ -605,13 +630,14 @@ class _CustomAutocompleteState extends State<_CustomAutocomplete> {
 
   void _showOverlay() {
     if (_overlayEntry != null) return;
-    
-    final renderBox = _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
+
+    final renderBox =
+        _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
-    
+
     final size = renderBox.size;
     final position = renderBox.localToGlobal(Offset.zero);
-    
+
     _overlayEntry = OverlayEntry(
       builder: (context) => Stack(
         children: [
@@ -640,9 +666,7 @@ class _CustomAutocompleteState extends State<_CustomAutocomplete> {
                         _hideOverlay();
                         _focusNode.unfocus();
                       },
-                      child: ListTile(
-                        title: Text(option),
-                      ),
+                      child: ListTile(title: Text(option)),
                     );
                   },
                 ),
@@ -652,7 +676,7 @@ class _CustomAutocompleteState extends State<_CustomAutocomplete> {
         ],
       ),
     );
-    
+
     Overlay.of(context).insert(_overlayEntry!);
   }
 
@@ -682,7 +706,9 @@ class _CustomAutocompleteState extends State<_CustomAutocomplete> {
             labelText: widget.label,
             border: const OutlineInputBorder(),
             hintText: widget.hint,
-            suffixIcon: widget.options.isEmpty ? null : const Icon(Icons.arrow_drop_down),
+            suffixIcon: widget.options.isEmpty
+                ? null
+                : const Icon(Icons.arrow_drop_down),
           ),
           onTap: () {
             if (widget.options.isNotEmpty) {

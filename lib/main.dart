@@ -16,14 +16,14 @@ import 'services/api_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  
+
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  
+
   runApp(const MyApp());
 }
 
@@ -66,9 +66,9 @@ class MyApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       builder: (context, child) {
         return MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.linear(1.0),
-          ),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(1.0)),
           child: child!,
         );
       },
@@ -160,17 +160,18 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _syncFromServer() async {
     if (_isSyncing) return;
-    
+
     setState(() {
       _isSyncing = true;
     });
-    
+
     try {
       // 先测试连接状态
       await _testServerConnection();
-      
+
       final records = await ApiService.getRecentRecords(months: 3);
       final ledgers = await ApiService.syncLedgers();
+
       if (mounted) {
         setState(() {
           _records = records;
@@ -185,7 +186,6 @@ class _HomePageState extends State<HomePage> {
         _saveRecords();
       }
     } catch (e) {
-      print('Error syncing from server: $e');
       if (mounted) {
         setState(() {
           _isSyncing = false;
@@ -194,7 +194,7 @@ class _HomePageState extends State<HomePage> {
       }
     }
   }
-  
+
   // 测试服务器连接状态
   Future<void> _testServerConnection() async {
     try {
@@ -218,7 +218,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadRecords() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       try {
         final records = await ApiService.getRecentRecords(months: 3);
         setState(() {
@@ -238,7 +238,7 @@ class _HomePageState extends State<HomePage> {
           });
         }
       }
-      
+
       try {
         final ledgers = await ApiService.syncLedgers();
         final ledgersJson = prefs.getString('ledgers');
@@ -269,7 +269,7 @@ class _HomePageState extends State<HomePage> {
           });
         }
       }
-      
+
       try {
         final deletedRecords = await ApiService.getDeletedRecords();
         setState(() {
@@ -281,16 +281,20 @@ class _HomePageState extends State<HomePage> {
         if (deletedRecordsJson != null) {
           final List<dynamic> decoded = json.decode(deletedRecordsJson);
           setState(() {
-            _deletedRecords = decoded.map((item) => Record.fromMap(item)).toList();
+            _deletedRecords = decoded
+                .map((item) => Record.fromMap(item))
+                .toList();
           });
         }
       }
-      
+
       final operationLogsJson = prefs.getString('operationLogs');
       if (operationLogsJson != null) {
         final List<dynamic> decoded = json.decode(operationLogsJson);
         setState(() {
-          _operationLogs = decoded.map((item) => OperationLog.fromMap(item)).toList();
+          _operationLogs = decoded
+              .map((item) => OperationLog.fromMap(item))
+              .toList();
         });
       }
     } catch (e) {
@@ -302,7 +306,9 @@ class _HomePageState extends State<HomePage> {
     final prefs = await SharedPreferences.getInstance();
     final recordsJson = json.encode(_records.map((r) => r.toMap()).toList());
     await prefs.setString('records', recordsJson);
-    final operationLogsJson = json.encode(_operationLogs.map((log) => log.toMap()).toList());
+    final operationLogsJson = json.encode(
+      _operationLogs.map((log) => log.toMap()).toList(),
+    );
     await prefs.setString('operationLogs', operationLogsJson);
     final ledgersJson = json.encode(_ledgers);
     await prefs.setString('ledgers', ledgersJson);
@@ -325,7 +331,14 @@ class _HomePageState extends State<HomePage> {
     _saveRecords();
   }
 
-  void _addRecord(DateTime date, String workContent, double amount, String category, List<String> staffIds, {String? imageUrl}) async {
+  void _addRecord(
+    DateTime date,
+    String workContent,
+    double amount,
+    String category,
+    List<String> staffIds, {
+    String? imageUrl,
+  }) async {
     final newRecord = Record(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       date: date,
@@ -340,8 +353,12 @@ class _HomePageState extends State<HomePage> {
       _records.add(newRecord);
     });
     _saveRecords();
-    _addOperationLog('添加', '添加记录', details: '工作内容: $workContent, 金额: ¥$amount, 类别: $category');
-    
+    _addOperationLog(
+      '添加',
+      '添加记录',
+      details: '工作内容: $workContent, 金额: ¥$amount, 类别: $category',
+    );
+
     try {
       await ApiService.createRecord(newRecord);
       await _syncFromServer();
@@ -359,8 +376,13 @@ class _HomePageState extends State<HomePage> {
       }
     });
     _saveRecords();
-    _addOperationLog('删除', '删除记录', details: '工作内容: ${record.workContent}, 金额: ¥${record.amount}, 类别: ${record.category}');
-    
+    _addOperationLog(
+      '删除',
+      '删除记录',
+      details:
+          '工作内容: ${record.workContent}, 金额: ¥${record.amount}, 类别: ${record.category}',
+    );
+
     try {
       await ApiService.deleteRecord(record.id);
       await _syncFromServer();
@@ -372,23 +394,26 @@ class _HomePageState extends State<HomePage> {
   void _updateRecord(Record updatedRecord) async {
     // 先更新本地状态
     setState(() {
-      final index = _records.indexWhere((record) => record.id == updatedRecord.id);
+      final index = _records.indexWhere(
+        (record) => record.id == updatedRecord.id,
+      );
       if (index != -1) {
         _records[index] = updatedRecord;
       }
     });
     _saveRecords();
-    _addOperationLog('编辑', '编辑记录', details: '工作内容: ${updatedRecord.workContent}, 金额: ¥${updatedRecord.amount}, 类别: ${updatedRecord.category}');
-    
+    _addOperationLog(
+      '编辑',
+      '编辑记录',
+      details:
+          '工作内容: ${updatedRecord.workContent}, 金额: ¥${updatedRecord.amount}, 类别: ${updatedRecord.category}, 人员: ${updatedRecord.staffIds.length}人',
+    );
+
     // 尝试上传到服务器
     try {
-      print('🔄 开始上传修改的记录到服务器...');
       await ApiService.updateRecord(updatedRecord);
-      print('✅ 记录上传成功');
-      
-      // 重新同步服务器数据
       await _syncFromServer();
-      
+
       // 显示成功消息
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -399,8 +424,6 @@ class _HomePageState extends State<HomePage> {
         );
       }
     } catch (e) {
-      print('❌ 记录上传失败: $e');
-      
       // 显示错误消息
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -421,7 +444,12 @@ class _HomePageState extends State<HomePage> {
         _records.add(record);
       });
       _saveRecords();
-      _addOperationLog('恢复', '恢复记录', details: '工作内容: ${record.workContent}, 金额: ¥${record.amount}, 类别: ${record.category}');
+      _addOperationLog(
+        '恢复',
+        '恢复记录',
+        details:
+            '工作内容: ${record.workContent}, 金额: ¥${record.amount}, 类别: ${record.category}',
+      );
       await _syncFromServer();
     } catch (e) {
       print('Error restoring record on server: $e');
@@ -492,7 +520,8 @@ class _HomePageState extends State<HomePage> {
                 setState(() {
                   _ledgers.clear();
                   _ledgers.addAll(updatedLedgers);
-                  if (!_ledgers.contains(_defaultLedger) && _ledgers.isNotEmpty) {
+                  if (!_ledgers.contains(_defaultLedger) &&
+                      _ledgers.isNotEmpty) {
                     _defaultLedger = _ledgers.first;
                   }
                 });
@@ -519,9 +548,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           RepaintBoundary(
-            child: OperationLogPage(
-              operationLogs: _operationLogs,
-            ),
+            child: OperationLogPage(operationLogs: _operationLogs),
           ),
         ],
       ),
@@ -542,14 +569,8 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.add_circle_outline),
             label: '记账',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list),
-            label: '查账',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: '操作记录',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.list), label: '查账'),
+          BottomNavigationBarItem(icon: Icon(Icons.history), label: '操作记录'),
         ],
       ),
     );

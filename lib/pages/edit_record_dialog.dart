@@ -258,82 +258,84 @@ class _EditRecordDialogState extends State<EditRecordDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       insetPadding: const EdgeInsets.all(20),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              '编辑记录',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            
-            // 日期选择
-            _buildDateField(),
-            const SizedBox(height: 12),
-            
-            // 工作内容
-            TextField(
-              controller: _workContentController,
-              decoration: const InputDecoration(
-                labelText: '工作内容',
-                border: OutlineInputBorder(),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                '编辑记录',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 12),
-            
-            // 金额
-            TextField(
-              controller: _amountController,
-              decoration: const InputDecoration(
-                labelText: '金额',
-                border: OutlineInputBorder(),
-                prefixText: '¥',
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 12),
-            
-            // 类别
-            TextField(
-              controller: _categoryController,
-              decoration: const InputDecoration(
-                labelText: '类别',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            
-            // 参与人员
-            _buildStaffField(),
-            const SizedBox(height: 12),
-            
-            // 账本
-            _buildLedgerField(),
-            const SizedBox(height: 20),
-            
-            // 操作按钮
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('取消'),
-                  ),
+              const SizedBox(height: 20),
+              
+              // 日期选择
+              _buildDateField(),
+              const SizedBox(height: 12),
+              
+              // 工作内容
+              TextField(
+                controller: _workContentController,
+                decoration: const InputDecoration(
+                  labelText: '工作内容',
+                  border: OutlineInputBorder(),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _saveChanges,
-                    child: const Text('保存'),
-                  ),
+              ),
+              const SizedBox(height: 12),
+              
+              // 金额
+              TextField(
+                controller: _amountController,
+                decoration: const InputDecoration(
+                  labelText: '金额',
+                  border: OutlineInputBorder(),
+                  prefixText: '¥',
                 ),
-              ],
-            ),
-          ],
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              
+              // 类别
+              TextField(
+                controller: _categoryController,
+                decoration: const InputDecoration(
+                  labelText: '类别',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // 参与人员
+              _buildStaffField(),
+              const SizedBox(height: 12),
+              
+              // 账本
+              _buildLedgerField(),
+              const SizedBox(height: 20),
+              
+              // 操作按钮
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _saveChanges,
+                      child: const Text('保存'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

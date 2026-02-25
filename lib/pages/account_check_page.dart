@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/record.dart';
 import '../models/staff.dart';
-import '../services/api_service.dart';
 import '../widgets/custom_date_picker.dart';
 import 'edit_record_dialog.dart';
 
@@ -35,11 +34,9 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
   DateTime? _startDate;
   DateTime? _endDate;
   String? _selectedCategory;
-  String? _selectedStaff;
+  List<String> _selectedStaff = [];
   String _searchKeyword = '';
   bool _showFilters = false;
-  Set<String> _selectedRecordIds = {};
-  bool _selectionMode = false;
 
   @override
   void initState() {
@@ -51,7 +48,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
   Map<String, List<Record>> get _groupedRecords {
     final filteredRecords = _filteredRecords;
     final grouped = <String, List<Record>>{};
-    
+
     for (final record in filteredRecords) {
       final dateKey = _formatDate(record.date);
       if (!grouped.containsKey(dateKey)) {
@@ -59,14 +56,14 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
       }
       grouped[dateKey]!.add(record);
     }
-    
+
     // 按日期排序
     final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
     final sortedMap = <String, List<Record>>{};
     for (final key in sortedKeys) {
       sortedMap[key] = grouped[key]!;
     }
-    
+
     return sortedMap;
   }
 
@@ -75,7 +72,9 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
 
     // 按账本筛选
     if (_selectedLedger != null) {
-      filtered = filtered.where((record) => record.ledger == _selectedLedger).toList();
+      filtered = filtered
+          .where((record) => record.ledger == _selectedLedger)
+          .toList();
     }
 
     // 按日期范围筛选
@@ -83,7 +82,8 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
       filtered = filtered.where((record) {
         return record.date.isAtSameMomentAs(_startDate!) ||
             record.date.isAtSameMomentAs(_endDate!) ||
-            (record.date.isAfter(_startDate!) && record.date.isBefore(_endDate!));
+            (record.date.isAfter(_startDate!) &&
+                record.date.isBefore(_endDate!));
       }).toList();
     } else if (_startDate != null) {
       filtered = filtered.where((record) {
@@ -101,13 +101,24 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
 
     // 按类别筛选
     if (_selectedCategory != null) {
-      filtered = filtered.where((record) => record.category == _selectedCategory).toList();
+      filtered = filtered
+          .where((record) => record.category == _selectedCategory)
+          .toList();
     }
 
     // 按参与人员筛选
-    if (_selectedStaff != null) {
+    if (_selectedStaff.isNotEmpty) {
       filtered = filtered.where((record) {
-        return record.staffIds.contains(_selectedStaff);
+        // 只要记录的staffIds中包含任何一个选中的人员，就满足条件
+        // 这里需要注意：record.staffIds存储的是人员ID，而_selectedStaff存储的是人员名称
+        // 我们需要先将人员名称转换为ID，然后再进行比较
+        return record.staffIds.any((staffId) {
+          final staff = widget.staffList.firstWhere(
+            (s) => s.id == staffId,
+            orElse: () => Staff(id: '', name: ''),
+          );
+          return _selectedStaff.contains(staff.name);
+        });
       }).toList();
     }
 
@@ -128,12 +139,15 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
   // 获取人员名称
   String _getStaffNames(List<String> staffIds) {
     if (staffIds.isEmpty) return '无';
-    
+
     final staffNames = staffIds.map((id) {
-      final staff = widget.staffList.firstWhere((s) => s.id == id, orElse: () => Staff(id: '', name: '未知'));
+      final staff = widget.staffList.firstWhere(
+        (s) => s.id == id,
+        orElse: () => Staff(id: '', name: '未知'),
+      );
       return staff.name;
     }).toList();
-    
+
     return staffNames.join(', ');
   }
 
@@ -154,7 +168,10 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
   }
 
   List<String> _getUniqueWorkContents() {
-    final workContents = widget.records.map((r) => r.workContent).toSet().toList();
+    final workContents = widget.records
+        .map((r) => r.workContent)
+        .toSet()
+        .toList();
     workContents.sort();
     return workContents;
   }
@@ -162,7 +179,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
   Widget _buildDateHeader(String date) {
     final records = _groupedRecords[date] ?? [];
     final totalAmount = records.fold(0.0, (sum, record) => sum + record.amount);
-    
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -188,7 +205,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
             ),
           ),
           Text(
-            '总计: ¥${totalAmount.toStringAsFixed(2)}',
+            '${records.length}条 ¥${totalAmount.toStringAsFixed(2)}',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
@@ -223,9 +240,9 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                   size: 20,
                 ),
               ),
-              
+
               const SizedBox(width: 12),
-              
+
               // 中间内容
               Expanded(
                 child: Column(
@@ -242,7 +259,9 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                       '类别: ${record.category}',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withAlpha(153),
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -250,7 +269,9 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                       '参与人员: ${_getStaffNames(record.staffIds)}',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withAlpha(153),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -258,7 +279,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                   ],
                 ),
               ),
-              
+
               // 右侧金额和操作按钮
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -275,7 +296,9 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                     record.ledger,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withAlpha(153),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -319,7 +342,10 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('日期范围', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+        const Text(
+          '日期范围',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+        ),
         const SizedBox(height: 4),
         Row(
           children: [
@@ -327,9 +353,14 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
               child: GestureDetector(
                 onTap: () => _selectDate(true),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
-                    border: Border.all(color: Theme.of(context).colorScheme.outline),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Row(
@@ -341,9 +372,11 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                             : '开始日期',
                         style: TextStyle(
                           fontSize: 12,
-                          color: _startDate != null 
+                          color: _startDate != null
                               ? Theme.of(context).colorScheme.onSurface
-                              : Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                              : Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withAlpha(153),
                         ),
                       ),
                       const Icon(Icons.calendar_today, size: 14),
@@ -357,9 +390,14 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
               child: GestureDetector(
                 onTap: () => _selectDate(false),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
-                    border: Border.all(color: Theme.of(context).colorScheme.outline),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Row(
@@ -371,9 +409,11 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                             : '结束日期',
                         style: TextStyle(
                           fontSize: 12,
-                          color: _endDate != null 
+                          color: _endDate != null
                               ? Theme.of(context).colorScheme.onSurface
-                              : Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                              : Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withAlpha(153),
                         ),
                       ),
                       const Icon(Icons.calendar_today, size: 14),
@@ -388,42 +428,6 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
     );
   }
 
-  Widget _buildDropdownFilter({
-    required String? value,
-    required List<String> options,
-    required String hintText,
-    required Function(String?) onChanged,
-  }) {
-    return DropdownButtonFormField<String>(
-      value: value,
-      items: [
-        DropdownMenuItem(
-          value: null,
-          child: Text(
-            hintText,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
-            ),
-          ),
-        ),
-        ...options.map((option) => DropdownMenuItem(
-          value: option,
-          child: Text(option),
-        )),
-      ],
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        border: OutlineInputBorder(
-          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-        ),
-      ),
-    );
-  }
-  
   // 紧凑版本的筛选器
   Widget _buildCompactDropdownFilter({
     required String? value,
@@ -444,13 +448,12 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
             ),
           ),
         ),
-        ...options.map((option) => DropdownMenuItem(
-          value: option,
-          child: Text(
-            option,
-            style: const TextStyle(fontSize: 12),
+        ...options.map(
+          (option) => DropdownMenuItem(
+            value: option,
+            child: Text(option, style: const TextStyle(fontSize: 12)),
           ),
-        )),
+        ),
       ],
       onChanged: onChanged,
       decoration: InputDecoration(
@@ -469,6 +472,119 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
     );
   }
 
+  // 多选人员选择器
+  Widget _buildMultiSelectStaffFilter() {
+    final displayText = _selectedStaff.isEmpty
+        ? '参与人员'
+        : '已选择 ${_selectedStaff.length} 人';
+
+    return GestureDetector(
+      onTap: () {
+        showDialog(
+          context: context,
+          builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: const Text('选择参与人员'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 选择模式说明
+                      Text(
+                        '请选择要筛选的人员（可多选）',
+                        style: TextStyle(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withAlpha(153),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // 人员列表
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 300),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: _uniqueStaffNames.length,
+                          itemBuilder: (context, index) {
+                            final staff = _uniqueStaffNames[index];
+                            final isSelected = _selectedStaff.contains(staff);
+
+                            return CheckboxListTile(
+                              value: isSelected,
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  if (value == true) {
+                                    _selectedStaff.add(staff);
+                                  } else {
+                                    _selectedStaff.remove(staff);
+                                  }
+                                });
+                              },
+                              title: Text(staff),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      setDialogState(() {
+                        _selectedStaff.clear();
+                      });
+                    },
+                    child: const Text('清空选择'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      setState(() {}); // 触发UI更新
+                    },
+                    child: const Text('确认'),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              displayText,
+              style: TextStyle(
+                fontSize: 12,
+                color: _selectedStaff.isEmpty
+                    ? Theme.of(context).colorScheme.onSurface.withAlpha(153)
+                    : Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+            Icon(
+              Icons.arrow_drop_down,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLedgerSelector() {
     final displayLedger = _selectedLedger ?? '全部账本';
     return GestureDetector(
@@ -481,19 +597,22 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
               width: double.maxFinite,
               child: ListView.builder(
                 shrinkWrap: true,
-                itemCount: widget.ledgers.isEmpty ? 1 : widget.ledgers.length + 1,
+                itemCount: widget.ledgers.isEmpty
+                    ? 1
+                    : widget.ledgers.length + 1,
                 itemBuilder: (context, index) {
                   if (widget.ledgers.isEmpty) {
-                    return const ListTile(
-                      title: Text('暂无账本'),
-                    );
+                    return const ListTile(title: Text('暂无账本'));
                   }
-                  
+
                   if (index == 0) {
                     return ListTile(
                       title: const Text('全部账本'),
                       trailing: _selectedLedger == null
-                          ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                          ? Icon(
+                              Icons.check,
+                              color: Theme.of(context).colorScheme.primary,
+                            )
                           : null,
                       onTap: () {
                         setState(() {
@@ -503,12 +622,15 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                       },
                     );
                   }
-                  
+
                   final ledger = widget.ledgers[index - 1];
                   return ListTile(
                     title: Text(ledger),
                     trailing: _selectedLedger == ledger
-                        ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                        ? Icon(
+                            Icons.check,
+                            color: Theme.of(context).colorScheme.primary,
+                          )
                         : null,
                     onTap: () {
                       setState(() {
@@ -531,10 +653,10 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
         );
       },
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
         decoration: BoxDecoration(
           border: Border.all(color: Theme.of(context).colorScheme.outline),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -543,15 +665,18 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
               child: Text(
                 displayLedger,
                 style: TextStyle(
-                  fontSize: 14,
-                  color: displayLedger == '全部账本' 
+                  fontSize: 13,
+                  color: displayLedger == '全部账本'
                       ? Theme.of(context).colorScheme.onSurface.withAlpha(153)
                       : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
             ),
             if (widget.ledgers.isNotEmpty)
-              Icon(Icons.arrow_drop_down, color: Theme.of(context).colorScheme.onSurface),
+              Icon(
+                Icons.arrow_drop_down,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
           ],
         ),
       ),
@@ -585,7 +710,10 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(Icons.edit, color: Theme.of(context).colorScheme.primary),
+              leading: Icon(
+                Icons.edit,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               title: const Text('编辑记录'),
               onTap: () {
                 Navigator.pop(context);
@@ -593,7 +721,10 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
               },
             ),
             ListTile(
-              leading: Icon(Icons.delete, color: Theme.of(context).colorScheme.error),
+              leading: Icon(
+                Icons.delete,
+                color: Theme.of(context).colorScheme.error,
+              ),
               title: const Text('删除记录'),
               onTap: () {
                 Navigator.pop(context);
@@ -657,51 +788,72 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
   @override
   Widget build(BuildContext context) {
     final groupedRecords = _groupedRecords;
-    
+
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: Column(
         children: [
-          // 搜索框
-          TextField(
-            decoration: InputDecoration(
-              hintText: '搜索工作内容、类别、金额、参与人员...',
-              prefixIcon: Icon(Icons.search, color: Theme.of(context).colorScheme.onSurface.withAlpha(153)),
-              border: OutlineInputBorder(
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-              ),
-            ),
-            onChanged: (value) => setState(() => _searchKeyword = value),
-          ),
-          
-          const SizedBox(height: 8),
-          
-          // 筛选开关
+          // 搜索框和筛选按钮行
           Row(
             children: [
-              const Text('高级筛选', style: TextStyle(fontWeight: FontWeight.bold)),
-              const Spacer(),
-              Switch(
-                value: _showFilters,
-                onChanged: (value) => setState(() => _showFilters = value),
+              // 搜索框
+              Expanded(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: '搜索工作内容、类别、金额、参与人员...',
+                    prefixIcon: Icon(
+                      Icons.search,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withAlpha(153),
+                    ),
+                    border: OutlineInputBorder(
+                      borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 12,
+                    ),
+                  ),
+                  onChanged: (value) => setState(() => _searchKeyword = value),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // 高级筛选按钮
+              ElevatedButton.icon(
+                onPressed: () => setState(() => _showFilters = !_showFilters),
+                icon: Icon(Icons.filter_list, size: 14),
+                label: Text(
+                  _showFilters ? '关闭' : '筛选',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 6,
+                    horizontal: 8,
+                  ),
+                  backgroundColor: _showFilters
+                      ? Theme.of(context).colorScheme.primaryContainer
+                      : null,
+                ),
               ),
             ],
           ),
-          
+
           // 筛选条件
           if (_showFilters) ...[
             const SizedBox(height: 8),
-            _buildDateFilter(),
+            // 账本选择
+            _buildLedgerSelector(),
             const SizedBox(height: 8),
-            _buildDropdownFilter(
-              value: _selectedLedger,
-              options: ['全部账本'] + widget.ledgers,
-              hintText: '选择账本',
-              onChanged: (value) => setState(() => _selectedLedger = value == '全部账本' ? null : value),
-            ),
+            _buildDateFilter(),
             const SizedBox(height: 8),
             // 类别和人员筛选项放在一行
             Row(
@@ -711,61 +863,16 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                     value: _selectedCategory,
                     options: _uniqueCategories,
                     hintText: '类别',
-                    onChanged: (value) => setState(() => _selectedCategory = value),
+                    onChanged: (value) =>
+                        setState(() => _selectedCategory = value),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: _buildCompactDropdownFilter(
-                    value: _selectedStaff,
-                    options: _uniqueStaffNames,
-                    hintText: '参与人员',
-                    onChanged: (value) => setState(() => _selectedStaff = value),
-                  ),
-                ),
+                Expanded(child: _buildMultiSelectStaffFilter()),
               ],
             ),
           ],
-          
-          const SizedBox(height: 4),
-          
-          // 选择并计算功能
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => setState(() => _selectionMode = !_selectionMode),
-                  icon: Icon(_selectionMode ? Icons.check_circle : Icons.calculate, size: 16),
-                  label: Text(_selectionMode ? '退出选择模式' : '选择并计算', style: const TextStyle(fontSize: 13)),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    backgroundColor: _selectionMode 
-                      ? Theme.of(context).colorScheme.primaryContainer 
-                      : null,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${_filteredRecords.length}条 ¥${_filteredRecords.fold(0.0, (sum, record) => sum + record.amount).toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 4),
-          
+
           // 记录列表
           Expanded(
             child: groupedRecords.isEmpty
@@ -773,7 +880,9 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                     child: Text(
                       '暂无记录',
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withAlpha(153),
                         fontSize: 16,
                       ),
                     ),
@@ -792,165 +901,17 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                         final dateIndex = (index - 1) ~/ 2;
                         final date = groupedRecords.keys.elementAt(dateIndex);
                         final records = groupedRecords[date]!;
-                        
+
                         return Column(
-                          children: records.map((record) => _buildRecordItem(record)).toList(),
+                          children: records
+                              .map((record) => _buildRecordItem(record))
+                              .toList(),
                         );
                       }
                     },
                   ),
           ),
         ],
-      ),
-    );
-  }
-  
-  // 显示选择计算对话框
-  void _showSelectionCalculation() {
-    setState(() {
-      _selectionMode = true;
-      _selectedRecordIds.clear();
-    });
-    
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final selectedRecords = _filteredRecords.where((record) => _selectedRecordIds.contains(record.id)).toList();
-          final totalAmount = selectedRecords.fold(0.0, (sum, record) => sum + record.amount);
-          
-          return AlertDialog(
-            title: const Text('选择并计算'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 选择模式说明
-                  Text(
-                    '请选择要计算的记录（已选择 ${selectedRecords.length} 条）',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // 记录列表
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 300),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _filteredRecords.length,
-                      itemBuilder: (context, index) {
-                        final record = _filteredRecords[index];
-                        final isSelected = _selectedRecordIds.contains(record.id);
-                        
-                        return CheckboxListTile(
-                          value: isSelected,
-                          onChanged: (value) {
-                            setDialogState(() {
-                              if (value == true) {
-                                _selectedRecordIds.add(record.id);
-                              } else {
-                                _selectedRecordIds.remove(record.id);
-                              }
-                            });
-                          },
-                          title: Text(
-                            record.workContent,
-                            style: TextStyle(
-                              fontSize: 14,
-                              decoration: isSelected ? TextDecoration.lineThrough : null,
-                            ),
-                          ),
-                          subtitle: Text(
-                            '¥${record.amount.toStringAsFixed(2)} - ${_formatDate(record.date)}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
-                            ),
-                          ),
-                          secondary: Text(
-                            '¥${record.amount.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // 统计信息
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '已选择: ${selectedRecords.length}条',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                        ),
-                        Text(
-                          '总计: ¥${totalAmount.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  setDialogState(() {
-                    _selectedRecordIds.clear();
-                  });
-                },
-                child: const Text('清空选择'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  setState(() {
-                    _selectionMode = false;
-                    _selectedRecordIds.clear();
-                  });
-                },
-                child: const Text('取消'),
-              ),
-              ElevatedButton(
-                onPressed: selectedRecords.isEmpty ? null : () {
-                  // 可以在这里添加导出或其他操作
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('已计算 ${selectedRecords.length} 条记录，总计 ¥${totalAmount.toStringAsFixed(2)}'),
-                    ),
-                  );
-                  Navigator.pop(context);
-                  setState(() {
-                    _selectionMode = false;
-                    _selectedRecordIds.clear();
-                  });
-                },
-                child: const Text('确认计算'),
-              ),
-            ],
-          );
-        },
       ),
     );
   }
