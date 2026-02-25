@@ -6,10 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models/record.dart';
 import 'models/operation_log.dart';
+import 'models/staff.dart';
 import 'pages/add_record_page.dart';
 import 'pages/view_records_page.dart';
 import 'pages/operation_log_page.dart';
 import 'pages/recycle_bin_page.dart';
+import 'pages/account_check_page.dart';
 import 'services/api_service.dart';
 
 void main() async {
@@ -105,6 +107,7 @@ class _HomePageState extends State<HomePage> {
   final List<String> _ledgers = ['默认账本'];
   bool _isSyncing = false;
   bool _isServerConnected = false;
+  List<Staff> _staffList = [];
 
   List<String> get _categories {
     final categories = _records.map((r) => r.category).toSet().toList();
@@ -124,6 +127,29 @@ class _HomePageState extends State<HomePage> {
     _instance = this;
     _pageController = PageController();
     _loadRecords();
+    _loadStaffList();
+  }
+
+  Future<void> _loadStaffList() async {
+    try {
+      final staffList = await ApiService.getStaffList();
+      setState(() {
+        _staffList = staffList;
+      });
+    } catch (e) {
+      print('Error loading staff list: $e');
+    }
+  }
+
+  Future<void> _syncStaffList() async {
+    try {
+      final staffList = await ApiService.getStaffList();
+      setState(() {
+        _staffList = staffList;
+      });
+    } catch (e) {
+      print('Error syncing staff list: $e');
+    }
   }
 
   @override
@@ -276,7 +302,7 @@ class _HomePageState extends State<HomePage> {
     _saveRecords();
   }
 
-  void _addRecord(DateTime date, String workContent, double amount, String category, {String? imageUrl}) async {
+  void _addRecord(DateTime date, String workContent, double amount, String category, List<String> staffIds, {String? imageUrl}) async {
     final newRecord = Record(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       date: date,
@@ -285,6 +311,7 @@ class _HomePageState extends State<HomePage> {
       category: category,
       ledger: _defaultLedger,
       imageUrl: imageUrl,
+      staffIds: staffIds,
     );
     setState(() {
       _records.add(newRecord);
@@ -300,22 +327,19 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _deleteRecord(String id) async {
-    final recordToDelete = _records.firstWhere((record) => record.id == id, orElse: () => Record(id: '', date: DateTime.now(), workContent: '', amount: 0, category: '', ledger: ''));
+  void _deleteRecord(Record record) async {
     setState(() {
-      _records.removeWhere((record) => record.id == id);
-      if (recordToDelete.id.isNotEmpty) {
-        _deletedRecords.insert(0, recordToDelete);
-        if (_deletedRecords.length > 300) {
-          _deletedRecords = _deletedRecords.sublist(0, 300);
-        }
+      _records.removeWhere((r) => r.id == record.id);
+      _deletedRecords.insert(0, record);
+      if (_deletedRecords.length > 300) {
+        _deletedRecords = _deletedRecords.sublist(0, 300);
       }
     });
     _saveRecords();
-    _addOperationLog('删除', '删除记录', details: '工作内容: ${recordToDelete.workContent}, 金额: ¥${recordToDelete.amount}, 类别: ${recordToDelete.category}');
+    _addOperationLog('删除', '删除记录', details: '工作内容: ${record.workContent}, 金额: ¥${record.amount}, 类别: ${record.category}');
     
     try {
-      await ApiService.deleteRecord(id);
+      await ApiService.deleteRecord(record.id);
       await _syncFromServer();
     } catch (e) {
       print('Error deleting record on server: $e');
@@ -425,22 +449,14 @@ class _HomePageState extends State<HomePage> {
                 });
                 _saveRecords();
               },
+              staffList: _staffList,
+              onStaffListUpdated: _syncStaffList,
             ),
           ),
           RepaintBoundary(
-            child: ViewRecordsPage(
+            child: AccountCheckPage(
               records: _records,
-              deletedRecords: _deletedRecords,
-              onDelete: _deleteRecord,
-              onUpdate: _updateRecord,
-              onRestore: (record) {
-                setState(() {
-                  _deletedRecords.removeWhere((r) => r.id == record.id);
-                  _records.add(record);
-                });
-                _saveRecords();
-                _addOperationLog('恢复', '恢复记录', details: '工作内容: ${record.workContent}, 金额: ¥${record.amount}, 类别: ${record.category}');
-              },
+              staffList: _staffList,
               ledgers: _ledgers,
               defaultLedger: _defaultLedger,
               onLedgerChanged: (ledger) {
@@ -449,29 +465,8 @@ class _HomePageState extends State<HomePage> {
                 });
                 _saveRecords();
               },
-              onAddLedger: (ledger) {
-                setState(() {
-                  if (!_ledgers.contains(ledger)) {
-                    _ledgers.add(ledger);
-                    _defaultLedger = ledger;
-                  }
-                });
-                _saveRecords();
-              },
-              onLedgersUpdated: (updatedLedgers) {
-                setState(() {
-                  _ledgers.clear();
-                  _ledgers.addAll(updatedLedgers);
-                  if (!_ledgers.contains(_defaultLedger) && _ledgers.isNotEmpty) {
-                    _defaultLedger = _ledgers.first;
-                  }
-                });
-                _saveRecords();
-              },
-              onSync: _syncFromServer,
-              onExport: (count) {
-                _addOperationLog('导出', '导出账目记录', details: '导出了$count条记录');
-              },
+              onUpdate: _updateRecord,
+              onDelete: _deleteRecord,
             ),
           ),
           RepaintBoundary(

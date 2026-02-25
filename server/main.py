@@ -79,6 +79,17 @@ def init_db():
             )
         ''')
         
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS staff (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                staff_id TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT
+            )
+        ''')
+        
         cursor.execute("PRAGMA table_info(records)")
         columns = [column[1] for column in cursor.fetchall()]
         if 'image_url' not in columns:
@@ -103,6 +114,10 @@ class RecordDTO(BaseModel):
 
 
 class LedgerDTO(BaseModel):
+    name: str
+
+
+class StaffDTO(BaseModel):
     name: str
 
 
@@ -499,6 +514,89 @@ async def delete_ledger(name: str):
             raise HTTPException(status_code=404, detail="Ledger not found")
     
     return {"message": "Ledger deleted successfully"}
+
+
+@app.get("/api/staff")
+async def get_staff_list():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT staff_id, name, is_active
+            FROM staff
+            WHERE is_active = 1
+            ORDER BY name
+        ''')
+        rows = cursor.fetchall()
+    
+    return [
+        {
+            "id": row["staff_id"],
+            "name": row["name"],
+            "isActive": bool(row["is_active"]),
+        }
+        for row in rows
+    ]
+
+
+@app.post("/api/staff")
+async def create_staff(staff: StaffDTO):
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            staff_id = str(uuid.uuid4())
+            now = datetime.now().isoformat()
+            cursor.execute('''
+                INSERT INTO staff (staff_id, name, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+            ''', (staff_id, staff.name, now, now))
+            conn.commit()
+        
+        return {
+            "id": staff_id,
+            "name": staff.name,
+            "isActive": True,
+        }
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Staff name already exists")
+
+
+@app.put("/api/staff/{staff_id}")
+async def update_staff(staff_id: str, staff: StaffDTO):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        now = datetime.now().isoformat()
+        cursor.execute('''
+            UPDATE staff
+            SET name = ?, updated_at = ?
+            WHERE staff_id = ?
+        ''', (staff.name, now, staff_id))
+        conn.commit()
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Staff not found")
+    
+    return {
+        "id": staff_id,
+        "name": staff.name,
+        "isActive": True,
+    }
+
+
+@app.delete("/api/staff/{staff_id}")
+async def delete_staff(staff_id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE staff
+            SET is_active = 0, updated_at = ?
+            WHERE staff_id = ?
+        ''', (datetime.now().isoformat(), staff_id))
+        conn.commit()
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Staff not found")
+    
+    return {"message": "Staff deleted successfully"}
 
 
 if __name__ == "__main__":

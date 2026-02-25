@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/record.dart';
+import '../models/staff.dart';
 
 class ApiService {
   static Future<String> _getBaseUrl() async {
@@ -111,7 +112,7 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        return data.map((item) => item.toString()).toList();
+        return data.cast<String>().toList();
       } else {
         throw Exception('Failed to load ledgers: ${response.statusCode}');
       }
@@ -265,7 +266,7 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        return data.map((item) => item.toString()).toList();
+        return data.cast<String>().toList();
       } else {
         throw Exception('Failed to sync ledgers: ${response.statusCode}');
       }
@@ -323,6 +324,79 @@ class ApiService {
       }
     } catch (e) {
       throw Exception('Error deleting ledger: $e');
+    }
+  }
+
+  static Future<List<Staff>> getStaffList() async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final response = await http.get(
+        Uri.parse('$baseUrl/staff'),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => Staff.fromMap(json)).toList();
+      } else {
+        throw Exception('Failed to load staff list: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching staff list: $e');
+    }
+  }
+
+  static Future<Staff> addStaff(String name) async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final response = await http.post(
+        Uri.parse('$baseUrl/staff'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'name': name}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return Staff.fromMap(data);
+      } else {
+        throw Exception('Failed to add staff: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error adding staff: $e');
+    }
+  }
+
+  static Future<Staff> updateStaff(String id, String name) async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final response = await http.put(
+        Uri.parse('$baseUrl/staff/$id'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'name': name}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return Staff.fromMap(data);
+      } else {
+        throw Exception('Failed to update staff: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error updating staff: $e');
+    }
+  }
+
+  static Future<void> deleteStaff(String id) async {
+    try {
+      final baseUrl = await _getBaseUrl();
+      final response = await http.delete(
+        Uri.parse('$baseUrl/staff/$id'),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to delete staff: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error deleting staff: $e');
     }
   }
 }
