@@ -5,9 +5,11 @@ import 'package:intl/intl.dart';
 import '../widgets/custom_date_picker.dart';
 import '../services/api_service.dart';
 import 'ledger_manage_page.dart';
+import 'staff_selection_page.dart';
+import '../models/staff.dart';
 
 class AddRecordPage extends StatefulWidget {
-  final Function(DateTime date, String workContent, double amount, String category, {String? imageUrl}) onAdd;
+  final Function(DateTime date, String workContent, double amount, String category, List<String> staffIds, {String? imageUrl}) onAdd;
   final List<String> categories;
   final List<String> workContents;
   final List<String> ledgers;
@@ -15,6 +17,8 @@ class AddRecordPage extends StatefulWidget {
   final Function(String) onLedgerChanged;
   final Function(String) onAddLedger;
   final Function(List<String>)? onLedgersUpdated;
+  final List<Staff> staffList;
+  final Function() onStaffListUpdated;
 
   const AddRecordPage({
     super.key, 
@@ -26,6 +30,8 @@ class AddRecordPage extends StatefulWidget {
     required this.onLedgerChanged,
     required this.onAddLedger,
     this.onLedgersUpdated,
+    required this.staffList,
+    required this.onStaffListUpdated,
   });
 
   @override
@@ -40,6 +46,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
   bool _isUploading = false;
   File? _selectedImage;
   final ImagePicker _imagePicker = ImagePicker();
+  List<String> _selectedStaffIds = [];
 
   Future<void> _selectDate() async {
     final DateTime? picked = await showCustomDatePicker(
@@ -108,6 +115,25 @@ class _AddRecordPageState extends State<AddRecordPage> {
     });
   }
 
+  Future<void> _selectStaff() async {
+    final List<String>? result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => StaffSelectionPage(
+          selectedStaffIds: _selectedStaffIds,
+          staffList: widget.staffList,
+          onStaffListUpdated: widget.onStaffListUpdated,
+        ),
+      ),
+    );
+    
+    if (result != null && mounted) {
+      setState(() {
+        _selectedStaffIds = result;
+      });
+    }
+  }
+
   void _saveRecord() async {
     final category = _categoryController.text.trim();
     if (_workContentController.text.isEmpty || _amountController.text.isEmpty || category.isEmpty) {
@@ -132,20 +158,21 @@ class _AddRecordPageState extends State<AddRecordPage> {
     String? imageUrl;
     if (_selectedImage != null) {
       try {
-        imageUrl = await ApiService.uploadImage(_selectedImage!);
-      } catch (e) {
-        print('Error uploading image: $e');
+      imageUrl = await ApiService.uploadImage(_selectedImage!);
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('图片上传失败: $e')),
         );
         setState(() {
           _isUploading = false;
         });
-        return;
       }
+      return;
+    }
     }
 
-    widget.onAdd(_selectedDate, _workContentController.text, amount, category, imageUrl: imageUrl);
+    widget.onAdd(_selectedDate, _workContentController.text, amount, category, _selectedStaffIds, imageUrl: imageUrl);
     _workContentController.clear();
     _amountController.clear();
     _categoryController.clear();
@@ -345,32 +372,40 @@ class _AddRecordPageState extends State<AddRecordPage> {
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
-          _buildLedgerSelector(),
-          const SizedBox(height: 16),
-          GestureDetector(
-            onTap: _selectDate,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildLedgerSelector(),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('日期', style: TextStyle(fontSize: 16)),
-                  Row(
-                    children: [
-                      Text(
-                        DateFormat('yyyy-MM-dd').format(_selectedDate),
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      const Icon(Icons.calendar_today),
-                    ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: GestureDetector(
+                  onTap: _selectDate,
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('日期', style: TextStyle(fontSize: 16)),
+                        Row(
+                          children: [
+                            Text(
+                              DateFormat('yyyy-MM-dd').format(_selectedDate),
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                            const Icon(Icons.calendar_today),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
           const SizedBox(height: 16),
           _buildAutocompleteField(
@@ -393,6 +428,52 @@ class _AddRecordPageState extends State<AddRecordPage> {
               _workContentController.text = selection;
               _workContentController.selection = TextSelection.fromPosition(TextPosition(offset: selection.length));
             },
+          ),
+          const SizedBox(height: 16),
+          GestureDetector(
+            onTap: _selectStaff,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(Icons.group, color: Colors.grey),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        '参与人员',
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        _selectedStaffIds.isEmpty ? '选择人员' : '已选择 ${_selectedStaffIds.length} 人',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: _selectedStaffIds.isEmpty ? Colors.grey : Colors.blue,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           TextField(
