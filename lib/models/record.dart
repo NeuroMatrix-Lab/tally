@@ -8,6 +8,7 @@ class Record {
   final String category;
   final String ledger;
   final String? imageUrl;
+  final List<String> staffIds;
 
   Record({
     required this.id,
@@ -17,6 +18,7 @@ class Record {
     required this.category,
     required this.ledger,
     this.imageUrl,
+    this.staffIds = const [],
   });
 
   Map<String, dynamic> toMap() {
@@ -28,6 +30,7 @@ class Record {
       'category': category,
       'ledger': ledger,
       'imageUrl': imageUrl,
+      'staffIds': staffIds,
     };
   }
 
@@ -40,6 +43,7 @@ class Record {
       category: map['category'] ?? '其他',
       ledger: map['ledger'] ?? '默认账本',
       imageUrl: map['imageUrl'],
+      staffIds: List<String>.from(map['staffIds'] ?? []),
     );
   }
 
