@@ -41,6 +41,8 @@ dependencies:
   share_plus: ^9.0.0
   http: ^1.2.0
   image_picker: ^1.0.7
+  mysql1: ^0.20.0
+  sqflite: ^2.2.8+4
 
 dev_dependencies:
   flutter_test:

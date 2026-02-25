@@ -134,7 +134,7 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withAlpha(25),
               border: const Border(
                 bottom: BorderSide(color: Colors.grey),
               ),
@@ -194,7 +194,7 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withAlpha(25),
               border: const Border(
                 bottom: BorderSide(color: Colors.grey),
               ),
@@ -254,7 +254,7 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withAlpha(25),
               border: const Border(
                 bottom: BorderSide(color: Colors.grey),
               ),
