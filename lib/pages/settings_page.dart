@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
+import 'package:mysql1/mysql1.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -15,19 +15,75 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _isTesting = false;
   String _connectionStatus = '未测试';
   Color _statusColor = Colors.grey;
+  
+  // 添加状态重置方法
+  void _resetStatus() {
+    setState(() {
+      _connectionStatus = '未测试';
+      _statusColor = Colors.grey;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    // 延迟自动测试连接
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        _autoTestConnection();
+      }
+    });
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    final serverIp = prefs.getString('serverIp') ?? '47.107.242.24';
+    final serverIp = prefs.getString('serverIp') ?? '120.220.73.186';
     setState(() {
       _ipController.text = serverIp;
     });
+  }
+  
+  // 自动测试连接
+  Future<void> _autoTestConnection() async {
+    final ip = _ipController.text.trim();
+    if (ip.isEmpty) return;
+    
+    try {
+      // 直接测试MariaDB数据库连接
+      final settings = ConnectionSettings(
+        host: ip,
+        port: 7378,
+        user: 'tally_user',
+        password: 'tally_password',
+        db: 'tally_db',
+      );
+      
+      final conn = await MySqlConnection.connect(settings).timeout(
+        const Duration(seconds: 3),
+      );
+      
+      // 测试数据库查询
+      final result = await conn.query('SELECT COUNT(*) FROM ledgers');
+      final count = result.first.first as int;
+      
+      await conn.close();
+
+      if (mounted) {
+        setState(() {
+          _connectionStatus = '连接正常 (账本数: $count)';
+          _statusColor = Colors.green;
+        });
+      }
+    } catch (e) {
+      // 自动测试失败时不显示错误，保持灰色状态
+      if (mounted) {
+        setState(() {
+          _connectionStatus = '未测试';
+          _statusColor = Colors.grey;
+        });
+      }
+    }
   }
 
   Future<void> _testConnection() async {
@@ -39,6 +95,9 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
+    // 重置状态
+    _resetStatus();
+    
     setState(() {
       _isTesting = true;
       _connectionStatus = '测试中...';
@@ -46,32 +105,42 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     try {
-      final response = await http.get(
-        Uri.parse('http://$ip:7378/api/records/ledgers'),
-      ).timeout(
+      // 直接测试MariaDB数据库连接
+      final settings = ConnectionSettings(
+        host: ip,
+        port: 7378,
+        user: 'tally_user',
+        password: 'tally_password',
+        db: 'tally_db',
+      );
+      
+      final conn = await MySqlConnection.connect(settings).timeout(
         const Duration(seconds: 5),
       );
+      
+      // 测试数据库查询
+      final result = await conn.query('SELECT COUNT(*) FROM ledgers');
+      final count = result.first.first as int;
+      
+      await conn.close();
 
-      if (response.statusCode == 200) {
+      setState(() {
+        _connectionStatus = '连接成功 (账本数: $count)';
+        _statusColor = Colors.green;
+      });
+    } catch (e) {
+      if (mounted) {
         setState(() {
-          _connectionStatus = '连接成功';
-          _statusColor = Colors.green;
-        });
-      } else {
-        setState(() {
-          _connectionStatus = '连接失败 (${response.statusCode})';
+          _connectionStatus = '连接失败: ${e.toString().split(':').first}';
           _statusColor = Colors.red;
         });
       }
-    } catch (e) {
-      setState(() {
-        _connectionStatus = '连接失败: $e';
-        _statusColor = Colors.red;
-      });
     } finally {
-      setState(() {
-        _isTesting = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isTesting = false;
+        });
+      }
     }
   }
 

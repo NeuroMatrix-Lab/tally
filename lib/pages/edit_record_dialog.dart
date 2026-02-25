@@ -178,7 +178,7 @@ class _EditRecordDialogState extends State<EditRecordDialog> {
                 style: TextStyle(
                   fontSize: 16,
                   color: staffNames.isEmpty 
-                      ? Theme.of(context).colorScheme.onSurface.withOpacity(0.6)
+                      ? Theme.of(context).colorScheme.onSurface.withAlpha(153) // 0.6 opacity
                       : Theme.of(context).colorScheme.onSurface,
                 ),
                 maxLines: 1,
