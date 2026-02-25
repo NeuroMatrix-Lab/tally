@@ -41,17 +41,59 @@ class ApiService {
         ORDER BY date DESC
       ''');
       
-      return results.map((row) => Record.fromMap({
-        'id': row['id'].toString(),
-        'recordId': row['record_id'],
-        'date': row['date']?.toIso8601String() ?? DateTime.now().toIso8601String(),
-        'category': row['category'],
-        'workContent': row['work_content'],
-        'amount': row['amount'] is double ? row['amount'] : (row['amount'] as num).toDouble(),
-        'ledger': row['ledger'],
-        'imageUrl': row['image_url'],
-        'staffIds': row['staff_ids'] != null ? json.decode(row['staff_ids']) : [],
-      })).toList();
+      return results.map((row) {
+        // 调试输出，查看实际的数据类型
+        print('🔍 数据库返回的行数据: $row');
+        
+        // 处理日期字段 - 可能是字符串或DateTime
+        String dateString;
+        if (row['date'] is DateTime) {
+          dateString = (row['date'] as DateTime).toIso8601String();
+        } else if (row['date'] is String) {
+          dateString = row['date'];
+        } else {
+          dateString = DateTime.now().toIso8601String();
+        }
+        
+        // 处理金额字段
+        double amountValue;
+        if (row['amount'] is double) {
+          amountValue = row['amount'];
+        } else if (row['amount'] is int) {
+          amountValue = (row['amount'] as int).toDouble();
+        } else if (row['amount'] is String) {
+          amountValue = double.tryParse(row['amount']) ?? 0.0;
+        } else {
+          amountValue = 0.0;
+        }
+        
+        // 处理staff_ids字段
+        List<String> staffIds = [];
+        if (row['staff_ids'] != null) {
+          if (row['staff_ids'] is String) {
+            try {
+              staffIds = List<String>.from(json.decode(row['staff_ids']));
+            } catch (e) {
+              print('❌ JSON解析失败: $e');
+              staffIds = [];
+            }
+          } else if (row['staff_ids'] is List) {
+            staffIds = List<String>.from(row['staff_ids']);
+          }
+        }
+        
+        return Record.fromMap({
+          'id': row['id'].toString(),
+          'recordId': row['record_id']?.toString() ?? '',
+          'date': dateString,
+          'category': row['category']?.toString() ?? '其他',
+          'workContent': row['work_content']?.toString() ?? '',
+          'amount': amountValue,
+          'ledger': row['ledger']?.toString() ?? '默认账本',
+          'imageUrl': row['image_url']?.toString(),
+          'staffIds': staffIds,
+        });
+      }).toList();
     } finally {
       await conn.close();
     }
@@ -68,17 +110,56 @@ class ApiService {
         ORDER BY date DESC
       ''', [months]);
       
-      return results.map((row) => Record.fromMap({
-        'id': row['id'].toString(),
-        'recordId': row['record_id'],
-        'date': row['date'].toString(),
-        'category': row['category'],
-        'workContent': row['work_content'],
-        'amount': row['amount'],
-        'ledger': row['ledger'],
-        'imageUrl': row['image_url'],
-        'staffIds': row['staff_ids'],
-      })).toList();
+      return results.map((row) {
+        // 处理日期字段 - 可能是字符串或DateTime
+        String dateString;
+        if (row['date'] is DateTime) {
+          dateString = (row['date'] as DateTime).toIso8601String();
+        } else if (row['date'] is String) {
+          dateString = row['date'];
+        } else {
+          dateString = DateTime.now().toIso8601String();
+        }
+        
+        // 处理金额字段
+        double amountValue;
+        if (row['amount'] is double) {
+          amountValue = row['amount'];
+        } else if (row['amount'] is int) {
+          amountValue = (row['amount'] as int).toDouble();
+        } else if (row['amount'] is String) {
+          amountValue = double.tryParse(row['amount']) ?? 0.0;
+        } else {
+          amountValue = 0.0;
+        }
+        
+        // 处理staff_ids字段
+        List<String> staffIds = [];
+        if (row['staff_ids'] != null) {
+          if (row['staff_ids'] is String) {
+            try {
+              staffIds = List<String>.from(json.decode(row['staff_ids']));
+            } catch (e) {
+              print('❌ JSON解析失败: $e');
+              staffIds = [];
+            }
+          } else if (row['staff_ids'] is List) {
+            staffIds = List<String>.from(row['staff_ids']);
+          }
+        }
+        
+        return Record.fromMap({
+          'id': row['id'].toString(),
+          'recordId': row['record_id']?.toString() ?? '',
+          'date': dateString,
+          'category': row['category']?.toString() ?? '其他',
+          'workContent': row['work_content']?.toString() ?? '',
+          'amount': amountValue,
+          'ledger': row['ledger']?.toString() ?? '默认账本',
+          'imageUrl': row['image_url']?.toString(),
+          'staffIds': staffIds,
+        });
+      }).toList();
     } finally {
       await conn.close();
     }

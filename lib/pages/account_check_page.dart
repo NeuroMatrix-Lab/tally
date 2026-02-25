@@ -316,64 +316,73 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
   }
 
   Widget _buildDateFilter() {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: GestureDetector(
-            onTap: () => _selectDate(true),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                border: Border.all(color: Theme.of(context).colorScheme.outline),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _startDate != null
-                        ? _formatDate(_startDate!)
-                        : '开始日期',
-                    style: TextStyle(
-                      color: _startDate != null 
-                          ? Theme.of(context).colorScheme.onSurface
-                          : Theme.of(context).colorScheme.onSurface.withAlpha(153),
-                    ),
+        const Text('日期范围', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _selectDate(true),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Theme.of(context).colorScheme.outline),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  const Icon(Icons.calendar_today, size: 16),
-                ],
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _startDate != null
+                            ? DateFormat('MM/dd').format(_startDate!)
+                            : '开始日期',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _startDate != null 
+                              ? Theme.of(context).colorScheme.onSurface
+                              : Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                        ),
+                      ),
+                      const Icon(Icons.calendar_today, size: 14),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: GestureDetector(
-            onTap: () => _selectDate(false),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                border: Border.all(color: Theme.of(context).colorScheme.outline),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _endDate != null
-                        ? _formatDate(_endDate!)
-                        : '结束日期',
-                    style: TextStyle(
-                      color: _endDate != null 
-                          ? Theme.of(context).colorScheme.onSurface
-                          : Theme.of(context).colorScheme.onSurface.withAlpha(153),
-                    ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _selectDate(false),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Theme.of(context).colorScheme.outline),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  const Icon(Icons.calendar_today, size: 16),
-                ],
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _endDate != null
+                            ? DateFormat('MM/dd').format(_endDate!)
+                            : '结束日期',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _endDate != null 
+                              ? Theme.of(context).colorScheme.onSurface
+                              : Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                        ),
+                      ),
+                      const Icon(Icons.calendar_today, size: 14),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ],
     );
@@ -386,24 +395,77 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
     required Function(String?) onChanged,
   }) {
     return DropdownButtonFormField<String>(
-      initialValue: value,
-      decoration: InputDecoration(
-        border: const OutlineInputBorder(),
-        hintText: hintText,
-      ),
+      value: value,
       items: [
         DropdownMenuItem(
           value: null,
-          child: Text(hintText, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withAlpha(153))),
+          child: Text(
+            hintText,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+            ),
+          ),
         ),
-        ...options.map((option) {
-          return DropdownMenuItem(
-            value: option,
-            child: Text(option),
-          );
-        }),
+        ...options.map((option) => DropdownMenuItem(
+          value: option,
+          child: Text(option),
+        )),
       ],
       onChanged: onChanged,
+      decoration: InputDecoration(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
+        ),
+      ),
+    );
+  }
+  
+  // 紧凑版本的筛选器
+  Widget _buildCompactDropdownFilter({
+    required String? value,
+    required List<String> options,
+    required String hintText,
+    required Function(String?) onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      items: [
+        DropdownMenuItem(
+          value: null,
+          child: Text(
+            hintText,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+              fontSize: 12,
+            ),
+          ),
+        ),
+        ...options.map((option) => DropdownMenuItem(
+          value: option,
+          child: Text(
+            option,
+            style: const TextStyle(fontSize: 12),
+          ),
+        )),
+      ],
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        border: OutlineInputBorder(
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        isDense: true,
+      ),
+      style: const TextStyle(fontSize: 12),
     );
   }
 
@@ -631,30 +693,39 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
           
           // 筛选条件
           if (_showFilters) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _buildDateFilter(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _buildDropdownFilter(
               value: _selectedLedger,
               options: ['全部账本'] + widget.ledgers,
               hintText: '选择账本',
               onChanged: (value) => setState(() => _selectedLedger = value == '全部账本' ? null : value),
             ),
-            const SizedBox(height: 12),
-            _buildDropdownFilter(
-              value: _selectedCategory,
-              options: _uniqueCategories,
-              hintText: '选择类别',
-              onChanged: (value) => setState(() => _selectedCategory = value),
+            const SizedBox(height: 8),
+            // 类别和人员筛选项放在一行
+            Row(
+              children: [
+                Expanded(
+                  child: _buildCompactDropdownFilter(
+                    value: _selectedCategory,
+                    options: _uniqueCategories,
+                    hintText: '类别',
+                    onChanged: (value) => setState(() => _selectedCategory = value),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildCompactDropdownFilter(
+                    value: _selectedStaff,
+                    options: _uniqueStaffNames,
+                    hintText: '参与人员',
+                    onChanged: (value) => setState(() => _selectedStaff = value),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            _buildDropdownFilter(
-              value: _selectedStaff,
-              options: _uniqueStaffNames,
-              hintText: '选择参与人员',
-              onChanged: (value) => setState(() => _selectedStaff = value),
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
           ],
           
           const SizedBox(height: 16),
@@ -664,26 +735,30 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => _showSelectionCalculation(),
-                  icon: const Icon(Icons.calculate),
-                  label: const Text('选择并计算'),
+                  onPressed: () => setState(() => _selectionMode = !_selectionMode),
+                  icon: Icon(_selectionMode ? Icons.check_circle : Icons.calculate),
+                  label: Text(_selectionMode ? '退出选择模式' : '选择并计算'),
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    backgroundColor: _selectionMode 
+                      ? Theme.of(context).colorScheme.primaryContainer 
+                      : null,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  '${_filteredRecords.length}条记录',
+                  '${_filteredRecords.length}条 ¥${_filteredRecords.fold(0.0, (sum, record) => sum + record.amount).toStringAsFixed(2)}',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Theme.of(context).colorScheme.primary,
+                    fontSize: 12,
                   ),
                 ),
               ),
