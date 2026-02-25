@@ -659,7 +659,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
     final groupedRecords = _groupedRecords;
     
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(12.0),
       child: Column(
         children: [
           // 搜索框
@@ -677,7 +677,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
             onChanged: (value) => setState(() => _searchKeyword = value),
           ),
           
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           
           // 筛选开关
           Row(
@@ -725,10 +725,9 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
           ],
           
-          const SizedBox(height: 16),
+          const SizedBox(height: 4),
           
           // 选择并计算功能
           Row(
@@ -736,10 +735,10 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () => setState(() => _selectionMode = !_selectionMode),
-                  icon: Icon(_selectionMode ? Icons.check_circle : Icons.calculate),
-                  label: Text(_selectionMode ? '退出选择模式' : '选择并计算'),
+                  icon: Icon(_selectionMode ? Icons.check_circle : Icons.calculate, size: 16),
+                  label: Text(_selectionMode ? '退出选择模式' : '选择并计算', style: const TextStyle(fontSize: 13)),
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    padding: const EdgeInsets.symmetric(vertical: 6),
                     backgroundColor: _selectionMode 
                       ? Theme.of(context).colorScheme.primaryContainer 
                       : null,
@@ -748,24 +747,24 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   '${_filteredRecords.length}条 ¥${_filteredRecords.fold(0.0, (sum, record) => sum + record.amount).toStringAsFixed(2)}',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Theme.of(context).colorScheme.primary,
-                    fontSize: 12,
+                    fontSize: 11,
                   ),
                 ),
               ),
             ],
           ),
           
-          const SizedBox(height: 16),
+          const SizedBox(height: 4),
           
           // 记录列表
           Expanded(
