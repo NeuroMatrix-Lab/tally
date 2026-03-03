@@ -54,6 +54,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  msix: ^3.16.13
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -101,3 +102,10 @@ flutter:
     - family: MiSans
       fonts:
         - asset: assets/MiSansLatinVF.ttf
+msix_config:
+ display_name: "tslly"
+ publisher_display_name: "殷灵涵Luminous"
+ identity_name: "com.Luminous.tally"
+ msix_version: "1.0.0.0"
+ logo_path: "D://Project/tally/android/app/src/main/res/mipmap-hdpi/ic_launcher.png"
+ capabilities: internetClient, location

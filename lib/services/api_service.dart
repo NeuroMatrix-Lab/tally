@@ -10,7 +10,7 @@ class ApiService {
   static Future<Map<String, dynamic>> _getDbSettings() async {
     final prefs = await SharedPreferences.getInstance();
     // Docker容器数据库连接配置
-    final serverIp = prefs.getString('serverIp') ?? '120.220.73.186'; // 您的服务器IP
+    final serverIp = prefs.getString('serverIp') ?? ''; // 您的服务器IP
     final dbPort = prefs.getInt('dbPort') ?? 7378;
     final dbUser = prefs.getString('dbUser') ?? 'tally_user';
     final dbPassword = prefs.getString('dbPassword') ?? 'tally_password';
@@ -28,7 +28,7 @@ class ApiService {
   // 获取数据库连接
   static Future<MySqlConnection> _getConnection() async {
     final prefs = await SharedPreferences.getInstance();
-    final serverIp = prefs.getString('serverIp') ?? '120.220.73.186';
+    final serverIp = prefs.getString('serverIp') ?? '';
 
     final settings = ConnectionSettings(
       host: serverIp,
