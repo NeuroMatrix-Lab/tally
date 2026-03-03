@@ -7,7 +7,7 @@ import '../models/staff.dart';
 class DatabaseService {
   static Future<MySqlConnection> _getConnection() async {
     final prefs = await SharedPreferences.getInstance();
-    final serverIp = prefs.getString('serverIp') ?? '47.107.242.24';
+    final serverIp = prefs.getString('serverIp') ?? '';
     
     final settings = ConnectionSettings(
       host: serverIp,
