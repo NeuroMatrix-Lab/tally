@@ -38,7 +38,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    final serverIp = prefs.getString('serverIp') ?? '120.220.73.186';
+    final serverIp = prefs.getString('serverIp') ?? '';
     setState(() {
       _ipController.text = serverIp;
     });
@@ -209,7 +209,7 @@ class _SettingsPageState extends State<SettingsPage> {
               controller: _ipController,
               decoration: InputDecoration(
                 labelText: '后端服务器IP地址',
-                hintText: '47.107.242.24',
+                hintText: '',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.dns),
               ),
