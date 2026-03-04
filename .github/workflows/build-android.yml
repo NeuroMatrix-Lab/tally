@@ -1,0 +1,32 @@
+name: Build Android
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: stable
+    
+    - name: Get dependencies
+      run: flutter pub get
+    
+    - name: Build Android
+      run: flutter build apk --release
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: android-build
+        path: build/app/outputs/flutter-apk/app-release.apk
