@@ -146,7 +146,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey),
+          border: Border.all(color: Theme.of(context).dividerColor),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -157,7 +157,9 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                 displayLedger,
                 style: TextStyle(
                   fontSize: 14,
-                  color: displayLedger == '全部账本' ? Colors.grey : Colors.black,
+                  color: displayLedger == '全部账本' 
+                    ? Theme.of(context).colorScheme.onSurface.withOpacity(0.6)
+                    : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
             ),
@@ -186,43 +188,6 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
             itemBuilder: (context, index) {
               if (widget.ledgers.isEmpty) {
                 return ListTile(
-                  leading: const Icon(Icons.settings, color: Colors.orange),
-                  title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => LedgerManagePage(
-                          ledgers: widget.ledgers,
-                          defaultLedger: widget.defaultLedger,
-                          onLedgersUpdated: (updatedLedgers) {
-                            if (widget.onLedgersUpdated != null) {
-                              widget.onLedgersUpdated!(updatedLedgers);
-                            }
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                );
-              } else {
-                if (index == 0) {
-                  return ListTile(
-                    title: const Text('全部账本'),
-                    trailing: _selectedLedger == null
-                        ? const Icon(Icons.check, color: Colors.green)
-                        : null,
-                    onTap: () {
-                      setState(() {
-                        _selectedLedger = null;
-                      });
-                      Navigator.pop(context);
-                    },
-                  );
-                }
-                if (index == widget.ledgers.length + 1) {
-                  return ListTile(
                     leading: const Icon(Icons.settings, color: Colors.orange),
                     title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
                     onTap: () async {
@@ -243,13 +208,50 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                       );
                     },
                   );
-                }
-                final ledger = widget.ledgers[index - 1];
-                return ListTile(
-                  title: Text(ledger),
-                  trailing: _selectedLedger == ledger
-                      ? const Icon(Icons.check, color: Colors.green)
-                      : null,
+                } else {
+                  if (index == 0) {
+                    return ListTile(
+                      title: const Text('全部账本'),
+                      trailing: _selectedLedger == null
+                          ? const Icon(Icons.check, color: Colors.green)
+                          : null,
+                      onTap: () {
+                        setState(() {
+                          _selectedLedger = null;
+                        });
+                        Navigator.pop(context);
+                      },
+                    );
+                  }
+                  if (index == widget.ledgers.length + 1) {
+                    return ListTile(
+                      leading: const Icon(Icons.settings, color: Colors.orange),
+                      title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => LedgerManagePage(
+                              ledgers: widget.ledgers,
+                              defaultLedger: widget.defaultLedger,
+                              onLedgersUpdated: (updatedLedgers) {
+                                if (widget.onLedgersUpdated != null) {
+                                  widget.onLedgersUpdated!(updatedLedgers);
+                                }
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  }
+                  final ledger = widget.ledgers[index - 1];
+                  return ListTile(
+                    title: Text(ledger),
+                    trailing: _selectedLedger == ledger
+                        ? const Icon(Icons.check, color: Colors.green)
+                        : null,
                   onTap: () {
                     setState(() {
                       _selectedLedger = ledger;
@@ -577,7 +579,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey),
+                        border: Border.all(color: Theme.of(context).dividerColor),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
@@ -636,9 +638,9 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                                   errorBuilder: (context, error, stackTrace) {
                                     return Container(
                                       height: 150,
-                                      color: Colors.grey.shade200,
-                                      child: const Center(
-                                        child: Icon(Icons.broken_image, color: Colors.grey),
+                                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                      child: Center(
+                                        child: Icon(Icons.broken_image, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
                                       ),
                                     );
                                   },
@@ -646,11 +648,11 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                               ),
                             )
                           else
-                            const Padding(
-                              padding: EdgeInsets.only(top: 8),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
                               child: Text(
                                 '暂无图片',
-                                style: TextStyle(color: Colors.grey, fontSize: 12),
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4), fontSize: 12),
                               ),
                             ),
                         ],
@@ -866,7 +868,9 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                     },
                     icon: Icon(
                       _showFilters ? Icons.expand_less : Icons.expand_more,
-                      color: _showFilters ? Colors.blue : Colors.grey,
+                      color: _showFilters 
+                        ? Theme.of(context).colorScheme.primary 
+                        : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                     ),
                     tooltip: '筛选',
                   ),
@@ -887,8 +891,12 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                           icon: Icon(_isCalculateMode ? Icons.close : Icons.calculate, size: 18),
                           label: Text(_isCalculateMode ? '取消计算' : '选择&计算'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _isCalculateMode ? Colors.red.shade100 : Colors.blue.shade100,
-                            foregroundColor: _isCalculateMode ? Colors.red.shade800 : Colors.blue.shade800,
+                            backgroundColor: _isCalculateMode 
+                              ? Theme.of(context).colorScheme.errorContainer 
+                              : Theme.of(context).colorScheme.primaryContainer,
+                            foregroundColor: _isCalculateMode 
+                              ? Theme.of(context).colorScheme.onErrorContainer 
+                              : Theme.of(context).colorScheme.onPrimaryContainer,
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                             minimumSize: const Size(0, 32),
                           ),
@@ -899,8 +907,8 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                           icon: const Icon(Icons.file_download, size: 18),
                           label: const Text('导出'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green.shade100,
-                            foregroundColor: Colors.green.shade800,
+                            backgroundColor: Theme.of(context).colorScheme.tertiaryContainer,
+                            foregroundColor: Theme.of(context).colorScheme.onTertiaryContainer,
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                             minimumSize: const Size(0, 32),
                           ),
@@ -913,8 +921,8 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                           icon: const Icon(Icons.delete_outline, size: 18),
                           label: const Text('回收站'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange.shade100,
-                            foregroundColor: Colors.orange.shade800,
+                            backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                            foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                             minimumSize: const Size(0, 32),
                           ),
@@ -932,7 +940,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                             child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                             decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey),
+                                border: Border.all(color: Theme.of(context).dividerColor),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               height: 48,
@@ -972,7 +980,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                               decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey),
+                                border: Border.all(color: Theme.of(context).dividerColor),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               height: 48,
@@ -1011,7 +1019,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                             decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey),
+                              border: Border.all(color: Theme.of(context).dividerColor),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             height: 48,
@@ -1062,35 +1070,36 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                     if (_isCalculateMode)
                       Container(
                         padding: const EdgeInsets.all(16),
-                        color: Colors.blue.shade50,
+                        color: Theme.of(context).colorScheme.primaryContainer,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   '总计:',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
+                                    color: Theme.of(context).colorScheme.onPrimaryContainer,
                                   ),
                                 ),
                                 Text(
                                   '${_filteredRecords.length} 条账目',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 14,
-                                    color: Colors.grey,
+                                    color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.7),
                                   ),
                                 ),
                               ],
                             ),
                             Text(
                               '¥${_totalAmount.toStringAsFixed(2)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.blue,
+                                color: Theme.of(context).colorScheme.primary,
                               ),
                             ),
                           ],
@@ -1107,7 +1116,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                               horizontal: 16,
                               vertical: 8,
                             ),
-                            color: isSelected ? Colors.blue.shade50 : null,
+                            color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
                             child: Column(
                               children: [
                                 if (record.imageUrl != null && record.imageUrl!.isNotEmpty)
@@ -1121,9 +1130,9 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                                       errorBuilder: (context, error, stackTrace) {
                                         return Container(
                                           height: 150,
-                                          color: Colors.grey.shade200,
-                                          child: const Center(
-                                            child: Icon(Icons.broken_image, color: Colors.grey),
+                                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                          child: Center(
+                                            child: Icon(Icons.broken_image, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
                                           ),
                                         );
                                       },
@@ -1148,7 +1157,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                                         record.category,
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: Colors.grey[600],
+                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                                         ),
                                       ),
                                     ],
@@ -1178,23 +1187,24 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
         if (_isCalculateMode && _selectedRecordIds.isNotEmpty)
           Container(
             padding: const EdgeInsets.all(16),
-            color: Colors.green.shade100,
+            color: Theme.of(context).colorScheme.tertiaryContainer,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   '已选 ${_selectedRecordIds.length} 条记录合计:',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onTertiaryContainer,
                   ),
                 ),
                 Text(
                   '¥${_selectedTotalAmount.toStringAsFixed(2)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: Colors.green,
+                    color: Theme.of(context).colorScheme.tertiary,
                   ),
                 ),
               ],
