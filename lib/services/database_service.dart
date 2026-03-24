@@ -96,7 +96,7 @@ class DatabaseService {
 
     final conn = await _getConnection();
     try {
-      final result = await conn.query('''
+      await conn.query('''
         INSERT INTO records (record_id, date, category, work_content, amount, ledger, image_url, staff_ids)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ''', [
