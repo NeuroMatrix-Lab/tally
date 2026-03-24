@@ -158,7 +158,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                 style: TextStyle(
                   fontSize: 14,
                   color: displayLedger == '全部账本' 
-                    ? Theme.of(context).colorScheme.onSurface.withOpacity(0.6)
+                    ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)
                     : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
@@ -192,7 +192,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                     title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
                     onTap: () async {
                       Navigator.pop(context);
-                      final result = await Navigator.push(
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => LedgerManagePage(
@@ -229,7 +229,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                       title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
                       onTap: () async {
                         Navigator.pop(context);
-                        final result = await Navigator.push(
+                        await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => LedgerManagePage(
@@ -260,7 +260,6 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                   },
                 );
               }
-              return const SizedBox.shrink();
             },
           ),
         ),
@@ -274,6 +273,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
     );
   }
 
+  // ignore: unused_element
   void _showAddLedgerDialog() {
     final TextEditingController controller = TextEditingController();
     showDialog(
@@ -386,6 +386,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
     }
   }
 
+  // ignore: unused_element
   Future<void> _refreshFromServer() async {
     setState(() {
       _isLoading = true;
@@ -436,6 +437,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
     });
   }
 
+  // ignore: unused_element
   void _selectAll() {
     setState(() {
       _selectedRecordIds.clear();
@@ -445,6 +447,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
     });
   }
 
+  // ignore: unused_element
   void _deselectAll() {
     setState(() {
       _selectedRecordIds.clear();
@@ -486,7 +489,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
       if (bytes != null) {
         await file.writeAsBytes(bytes, flush: true);
         if (mounted) {
-          await Share.shareXFiles([XFile(file.path)], text: '导出账目记录');
+          await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], text: '导出账目记录'));
           widget.onExport(_filteredRecords.length);
         }
       }
@@ -640,7 +643,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                                       height: 150,
                                       color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                       child: Center(
-                                        child: Icon(Icons.broken_image, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
+                                        child: Icon(Icons.broken_image, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
                                       ),
                                     );
                                   },
@@ -652,7 +655,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                               padding: const EdgeInsets.only(top: 8),
                               child: Text(
                                 '暂无图片',
-                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4), fontSize: 12),
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4), fontSize: 12),
                               ),
                             ),
                         ],
@@ -870,7 +873,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                       _showFilters ? Icons.expand_less : Icons.expand_more,
                       color: _showFilters 
                         ? Theme.of(context).colorScheme.primary 
-                        : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                     tooltip: '筛选',
                   ),
@@ -1089,7 +1092,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                                   '${_filteredRecords.length} 条账目',
                                   style: TextStyle(
                                     fontSize: 14,
-                                    color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.7),
+                                    color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.7),
                                   ),
                                 ),
                               ],
@@ -1132,7 +1135,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                                           height: 150,
                                           color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                           child: Center(
-                                            child: Icon(Icons.broken_image, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
+                                            child: Icon(Icons.broken_image, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
                                           ),
                                         );
                                       },
@@ -1157,7 +1160,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                                         record.category,
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                                         ),
                                       ),
                                     ],

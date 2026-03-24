@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 class CustomDatePicker extends StatefulWidget {
   final DateTime initialDate;
@@ -144,7 +143,7 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-          Container(
+          SizedBox(
             height: 150,
             child: ListWheelScrollView.useDelegate(
               itemExtent: 40,
@@ -204,7 +203,7 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-          Container(
+          SizedBox(
             height: 150,
             child: ListWheelScrollView.useDelegate(
               itemExtent: 40,
@@ -264,7 +263,7 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-          Container(
+          SizedBox(
             height: 150,
             child: ListWheelScrollView.useDelegate(
               itemExtent: 40,

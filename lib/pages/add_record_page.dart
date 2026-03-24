@@ -263,7 +263,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
                   ),
                   onTap: () async {
                     Navigator.pop(context);
-                    final result = await Navigator.push(
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => LedgerManagePage(
@@ -289,7 +289,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
                     ),
                     onTap: () async {
                       Navigator.pop(context);
-                      final result = await Navigator.push(
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => LedgerManagePage(
@@ -318,7 +318,6 @@ class _AddRecordPageState extends State<AddRecordPage> {
                   },
                 );
               }
-              return const SizedBox.shrink();
             },
           ),
         ),
@@ -326,40 +325,6 @@ class _AddRecordPageState extends State<AddRecordPage> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('关闭'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAddLedgerDialog() {
-    final TextEditingController controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('添加账本'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: '请输入账本名称',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final name = controller.text.trim();
-              if (name.isNotEmpty) {
-                widget.onAddLedger(name);
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('添加'),
           ),
         ],
       ),

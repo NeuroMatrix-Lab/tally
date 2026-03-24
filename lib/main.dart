@@ -8,7 +8,6 @@ import 'models/record.dart';
 import 'models/operation_log.dart';
 import 'models/staff.dart';
 import 'pages/add_record_page.dart';
-import 'pages/view_records_page.dart';
 import 'pages/operation_log_page.dart';
 import 'pages/recycle_bin_page.dart';
 import 'pages/account_check_page.dart';
@@ -211,7 +210,7 @@ class _HomePageState extends State<HomePage> {
           _isServerConnected = false;
         });
       }
-      throw e;
+      rethrow;
     }
   }
 
