@@ -11,6 +11,9 @@ on:
         required: true
         default: 'v1.0.0'
 
+permissions:
+  contents: write
+
 jobs:
   build-android:
     runs-on: ubuntu-latest
@@ -35,11 +38,11 @@ jobs:
       
       - name: Rename APK
         run: |
-          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/tally-${{ github.ref_name }}-android.apk
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/tally-${{ github.ref_name || github.event.inputs.tag_name }}-android.apk
       
       - name: Rename AppBundle
         run: |
-          mv build/app/outputs/bundle/release/app-release.aab build/app/outputs/bundle/release/tally-${{ github.ref_name }}-android.aab
+          mv build/app/outputs/bundle/release/app-release.aab build/app/outputs/bundle/release/tally-${{ github.ref_name || github.event.inputs.tag_name }}-android.aab
       
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
@@ -70,7 +73,7 @@ jobs:
       
       - name: Create Windows Zip
         run: |
-          $version = "${{ github.ref_name }}"
+          $version = "${{ github.ref_name || github.event.inputs.tag_name }}"
           $zipName = "tally-${version}-windows.zip"
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\windows\$zipName
       
@@ -101,7 +104,7 @@ jobs:
       
       - name: Create macOS DMG
         run: |
-          version="${{ github.ref_name }}"
+          version="${{ github.ref_name || github.event.inputs.tag_name }}"
           app_path="build/macos/Build/Products/Release/tally.app"
           dmg_path="build/macos/tally-${version}-macos.dmg"
           hdiutil create -srcfolder "$app_path" -volname "Tally" -fs HFS+ -format UDZO "$dmg_path"
@@ -119,6 +122,12 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Create build directories
+        run: |
+          mkdir -p builds/android
+          mkdir -p builds/windows
+          mkdir -p builds/macos
       
       - name: Download Android Artifacts
         uses: actions/download-artifact@v4
@@ -138,6 +147,9 @@ jobs:
           name: macos-builds
           path: builds/macos
       
+      - name: List downloaded files
+        run: find builds -type f
+      
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -146,10 +158,9 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            builds/android/tally-*.apk
-            builds/android/tally-*.aab
-            builds/windows/tally-*.zip
-            builds/macos/tally-*.dmg
+            builds/android/*
+            builds/windows/*
+            builds/macos/*
           body: |
             ## What's Changed
             - Automatic build and release
