@@ -443,7 +443,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
           child: Text(
             hintText,
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 153 / 255),
               fontSize: 12,
             ),
           ),
