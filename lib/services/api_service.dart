@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -8,11 +9,7 @@ import 'package:path/path.dart';
 import '../models/record.dart';
 import '../models/staff.dart';
 
-enum ConnectionMode {
-  local,
-  backend,
-  database,
-}
+enum ConnectionMode { local, backend, database }
 
 class ApiService {
   static Database? _localDb;
@@ -27,20 +24,53 @@ class ApiService {
   // 获取后端服务基础URL
   static Future<String> _getBackendBaseUrl() async {
     final prefs = await SharedPreferences.getInstance();
-    final host = prefs.getString('backendIp') ?? '';
-    final portStr = prefs.getString('backendPort') ?? '7378';
-    return 'http://$host:$portStr';
+    final host = prefs.getString('backendIp')?.trim() ?? '';
+    final portStr = prefs.getString('backendPort')?.trim() ?? '7378';
+
+    if (host.isEmpty) {
+      throw Exception('后端服务地址未配置，请在设置中填写');
+    }
+
+    final port = int.tryParse(portStr);
+    if (port == null || port <= 0 || port > 65535) {
+      throw Exception('后端服务端口无效，请输入 1-65535 之间的端口');
+    }
+
+    return 'http://$host:$port';
+  }
+
+  static Future<void> _validateBackendConfig() async {
+    await _getBackendBaseUrl();
+  }
+
+  static Future<void> _validateDatabaseConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    final host = prefs.getString('dbHost')?.trim() ?? '';
+    final portStr = prefs.getString('dbPort')?.trim() ?? '3306';
+    final user = prefs.getString('dbUser')?.trim() ?? '';
+    final dbName = prefs.getString('dbName')?.trim() ?? '';
+
+    if (host.isEmpty || user.isEmpty || dbName.isEmpty) {
+      throw Exception('数据库直通模式请填写完整数据库连接信息（host/user/dbName）');
+    }
+
+    final port = int.tryParse(portStr);
+    if (port == null || port <= 0 || port > 65535) {
+      throw Exception('数据库端口无效，请输入 1-65535 之间的端口');
+    }
   }
 
   // 获取数据库连接配置（数据库直通模式）
   static Future<ConnectionSettings> _getDbConnectionSettings() async {
+    await _validateDatabaseConfig();
+
     final prefs = await SharedPreferences.getInstance();
-    final host = prefs.getString('dbHost') ?? '';
-    final portStr = prefs.getString('dbPort') ?? '3306';
+    final host = prefs.getString('dbHost')?.trim() ?? '';
+    final portStr = prefs.getString('dbPort')?.trim() ?? '3306';
     final port = int.tryParse(portStr) ?? 3306;
-    final user = prefs.getString('dbUser') ?? '';
-    final password = prefs.getString('dbPassword') ?? '';
-    final dbName = prefs.getString('dbName') ?? '';
+    final user = prefs.getString('dbUser')?.trim() ?? '';
+    final password = prefs.getString('dbPassword')?.trim() ?? '';
+    final dbName = prefs.getString('dbName')?.trim() ?? '';
 
     return ConnectionSettings(
       host: host,
@@ -60,64 +90,76 @@ class ApiService {
 
     _localDb = await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
-        // 创建记录表
-        await db.execute('''
-          CREATE TABLE records (
-            id TEXT PRIMARY KEY,
-            record_id TEXT NOT NULL UNIQUE,
-            date TEXT NOT NULL,
-            category TEXT NOT NULL,
-            work_content TEXT NOT NULL,
-            amount REAL NOT NULL,
-            ledger TEXT NOT NULL,
-            image_url TEXT,
-            staff_ids TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            deleted_at TEXT DEFAULT NULL
-          )
-        ''');
-
-        // 创建已删除记录表
-        await db.execute('''
-          CREATE TABLE deleted_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            record_id TEXT NOT NULL,
-            date TEXT NOT NULL,
-            category TEXT NOT NULL,
-            work_content TEXT NOT NULL,
-            amount REAL NOT NULL,
-            ledger TEXT NOT NULL,
-            image_url TEXT,
-            staff_ids TEXT,
-            deleted_at TEXT DEFAULT CURRENT_TIMESTAMP
-          )
-        ''');
-
-        // 创建账本表
-        await db.execute('''
-          CREATE TABLE ledgers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE
-          )
-        ''');
-
-        // 创建人员表
-        await db.execute('''
-          CREATE TABLE staff (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL
-          )
-        ''');
-
-        // 插入默认账本
-        await db.insert('ledgers', {'name': '默认账本'});
+        await _initializeDatabase(db);
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < newVersion) {
+          await _initializeDatabase(db);
+        }
+      },
+      onDowngrade: onDatabaseDowngradeDelete,
     );
 
     return _localDb!;
+  }
+
+  static Future<void> _initializeDatabase(Database db) async {
+    // 创建记录表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS records (
+        id TEXT PRIMARY KEY,
+        record_id TEXT NOT NULL UNIQUE,
+        date TEXT NOT NULL,
+        category TEXT NOT NULL,
+        work_content TEXT NOT NULL,
+        amount REAL NOT NULL,
+        ledger TEXT NOT NULL,
+        image_url TEXT,
+        staff_ids TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TEXT DEFAULT NULL
+      )
+    ''');
+
+    // 创建已删除记录表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS deleted_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        record_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        category TEXT NOT NULL,
+        work_content TEXT NOT NULL,
+        amount REAL NOT NULL,
+        ledger TEXT NOT NULL,
+        image_url TEXT,
+        staff_ids TEXT,
+        deleted_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+
+    // 创建账本表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ledgers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE
+      )
+    ''');
+
+    // 创建人员表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS staff (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL
+      )
+    ''');
+
+    // 插入默认账本 (仅在不存在时)
+    await db.insert('ledgers', {
+      'name': '默认账本',
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   // ==================== HTTP API 调用（后端服务模式）====================
@@ -125,62 +167,96 @@ class ApiService {
   // HTTP GET 请求
   static Future<dynamic> _httpGet(String endpoint) async {
     final baseUrl = await _getBackendBaseUrl();
-    final response = await http.get(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: {'Content-Type': 'application/json'},
-    );
+    final uri = Uri.parse('$baseUrl$endpoint');
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return json.decode(response.body);
-    } else {
-      throw Exception('HTTP ${response.statusCode}: ${response.body}');
+    try {
+      final response = await http
+          .get(uri, headers: {'Content-Type': 'application/json'})
+          .timeout(const Duration(seconds: 12));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('HTTP ${response.statusCode}: ${response.body}');
+      }
+    } on TimeoutException {
+      throw Exception('请求超时，请检查后端服务是否可访问');
+    } on SocketException catch (e) {
+      throw Exception('网络异常：$e');
     }
   }
 
   // HTTP POST 请求
   static Future<dynamic> _httpPost(String endpoint, dynamic body) async {
     final baseUrl = await _getBackendBaseUrl();
-    final response = await http.post(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(body),
-    );
+    final uri = Uri.parse('$baseUrl$endpoint');
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (response.body.isEmpty) return null;
-      return json.decode(response.body);
-    } else {
-      throw Exception('HTTP ${response.statusCode}: ${response.body}');
+    try {
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode(body),
+          )
+          .timeout(const Duration(seconds: 12));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (response.body.isEmpty) return null;
+        return json.decode(response.body);
+      } else {
+        throw Exception('HTTP ${response.statusCode}: ${response.body}');
+      }
+    } on TimeoutException {
+      throw Exception('请求超时，请检查后端服务是否可访问');
+    } on SocketException catch (e) {
+      throw Exception('网络异常：$e');
     }
   }
 
   // HTTP PUT 请求
   static Future<dynamic> _httpPut(String endpoint, dynamic body) async {
     final baseUrl = await _getBackendBaseUrl();
-    final response = await http.put(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(body),
-    );
+    final uri = Uri.parse('$baseUrl$endpoint');
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (response.body.isEmpty) return null;
-      return json.decode(response.body);
-    } else {
-      throw Exception('HTTP ${response.statusCode}: ${response.body}');
+    try {
+      final response = await http
+          .put(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode(body),
+          )
+          .timeout(const Duration(seconds: 12));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (response.body.isEmpty) return null;
+        return json.decode(response.body);
+      } else {
+        throw Exception('HTTP ${response.statusCode}: ${response.body}');
+      }
+    } on TimeoutException {
+      throw Exception('请求超时，请检查后端服务是否可访问');
+    } on SocketException catch (e) {
+      throw Exception('网络异常：$e');
     }
   }
 
   // HTTP DELETE 请求
   static Future<void> _httpDelete(String endpoint) async {
     final baseUrl = await _getBackendBaseUrl();
-    final response = await http.delete(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: {'Content-Type': 'application/json'},
-    );
+    final uri = Uri.parse('$baseUrl$endpoint');
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('HTTP ${response.statusCode}: ${response.body}');
+    try {
+      final response = await http
+          .delete(uri, headers: {'Content-Type': 'application/json'})
+          .timeout(const Duration(seconds: 12));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('HTTP ${response.statusCode}: ${response.body}');
+      }
+    } on TimeoutException {
+      throw Exception('请求超时，请检查后端服务是否可访问');
+    } on SocketException catch (e) {
+      throw Exception('网络异常：$e');
     }
   }
 
@@ -266,12 +342,15 @@ class ApiService {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      final results = await conn.query('''
+      final results = await conn.query(
+        '''
         SELECT * FROM records 
         WHERE deleted_at IS NULL 
         AND date >= DATE_SUB(NOW(), INTERVAL ? MONTH)
         ORDER BY date DESC
-      ''', [months]);
+      ''',
+        [months],
+      );
 
       return results.map((row) => _recordFromDbRow(row)).toList();
     } finally {
@@ -421,19 +500,22 @@ class ApiService {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      await conn.query('''
+      await conn.query(
+        '''
         INSERT INTO records (record_id, date, category, work_content, amount, ledger, image_url, staff_ids)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ''', [
-        record.id,
-        record.date.toIso8601String(),
-        record.category,
-        record.workContent,
-        record.amount,
-        record.ledger,
-        record.imageUrl,
-        json.encode(record.staffIds),
-      ]);
+      ''',
+        [
+          record.id,
+          record.date.toIso8601String(),
+          record.category,
+          record.workContent,
+          record.amount,
+          record.ledger,
+          record.imageUrl,
+          json.encode(record.staffIds),
+        ],
+      );
       return record;
     } finally {
       await conn.close();
@@ -491,20 +573,23 @@ class ApiService {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      await conn.query('''
+      await conn.query(
+        '''
         UPDATE records 
         SET date = ?, category = ?, work_content = ?, amount = ?, ledger = ?, image_url = ?, staff_ids = ?
         WHERE record_id = ?
-      ''', [
-        record.date.toIso8601String(),
-        record.category,
-        record.workContent,
-        record.amount,
-        record.ledger,
-        record.imageUrl,
-        json.encode(record.staffIds),
-        record.id,
-      ]);
+      ''',
+        [
+          record.date.toIso8601String(),
+          record.category,
+          record.workContent,
+          record.amount,
+          record.ledger,
+          record.imageUrl,
+          json.encode(record.staffIds),
+          record.id,
+        ],
+      );
       return record;
     } finally {
       await conn.close();
@@ -576,19 +661,22 @@ class ApiService {
       if (results.isNotEmpty) {
         final row = results.first;
         // 插入到deleted_records
-        await conn.query('''
+        await conn.query(
+          '''
           INSERT INTO deleted_records (record_id, date, category, work_content, amount, ledger, image_url, staff_ids, deleted_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-        ''', [
-          row['record_id'],
-          row['date'],
-          row['category'],
-          row['work_content'],
-          row['amount'],
-          row['ledger'],
-          row['image_url'],
-          row['staff_ids'],
-        ]);
+        ''',
+          [
+            row['record_id'],
+            row['date'],
+            row['category'],
+            row['work_content'],
+            row['amount'],
+            row['ledger'],
+            row['image_url'],
+            row['staff_ids'],
+          ],
+        );
 
         // 软删除
         await conn.query(
@@ -706,25 +794,27 @@ class ApiService {
 
       if (results.isNotEmpty) {
         final row = results.first;
-        await conn.query('''
+        await conn.query(
+          '''
           INSERT INTO records (record_id, date, category, work_content, amount, ledger, image_url, staff_ids)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE deleted_at = NULL
-        ''', [
-          row['record_id'],
-          row['date'],
-          row['category'],
-          row['work_content'],
-          row['amount'],
-          row['ledger'],
-          row['image_url'],
-          row['staff_ids'],
-        ]);
-
-        await conn.query(
-          'DELETE FROM deleted_records WHERE record_id = ?',
-          [recordId],
+        ''',
+          [
+            row['record_id'],
+            row['date'],
+            row['category'],
+            row['work_content'],
+            row['amount'],
+            row['ledger'],
+            row['image_url'],
+            row['staff_ids'],
+          ],
         );
+
+        await conn.query('DELETE FROM deleted_records WHERE record_id = ?', [
+          recordId,
+        ]);
       }
     } finally {
       await conn.close();
@@ -765,10 +855,9 @@ class ApiService {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      await conn.query(
-        'DELETE FROM deleted_records WHERE record_id = ?',
-        [recordId],
-      );
+      await conn.query('DELETE FROM deleted_records WHERE record_id = ?', [
+        recordId,
+      ]);
     } finally {
       await conn.close();
     }
@@ -804,7 +893,9 @@ class ApiService {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      final results = await conn.query('SELECT name FROM ledgers ORDER BY name');
+      final results = await conn.query(
+        'SELECT name FROM ledgers ORDER BY name',
+      );
       return results.map((row) => row['name'] as String).toList();
     } finally {
       await conn.close();
@@ -863,7 +954,10 @@ class ApiService {
     }
   }
 
-  static Future<String> _updateLedgerLocal(String oldName, String newName) async {
+  static Future<String> _updateLedgerLocal(
+    String oldName,
+    String newName,
+  ) async {
     final db = await _getLocalDb();
     await db.update(
       'ledgers',
@@ -880,17 +974,29 @@ class ApiService {
     return newName;
   }
 
-  static Future<String> _updateLedgerBackend(String oldName, String newName) async {
+  static Future<String> _updateLedgerBackend(
+    String oldName,
+    String newName,
+  ) async {
     await _httpPut('/api/ledgers/$oldName', newName);
     return newName;
   }
 
-  static Future<String> _updateLedgerDatabase(String oldName, String newName) async {
+  static Future<String> _updateLedgerDatabase(
+    String oldName,
+    String newName,
+  ) async {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      await conn.query('UPDATE ledgers SET name = ? WHERE name = ?', [newName, oldName]);
-      await conn.query('UPDATE records SET ledger = ? WHERE ledger = ?', [newName, oldName]);
+      await conn.query('UPDATE ledgers SET name = ? WHERE name = ?', [
+        newName,
+        oldName,
+      ]);
+      await conn.query('UPDATE records SET ledger = ? WHERE ledger = ?', [
+        newName,
+        oldName,
+      ]);
       return newName;
     } finally {
       await conn.close();
@@ -915,11 +1021,7 @@ class ApiService {
 
   static Future<void> _deleteLedgerLocal(String name) async {
     final db = await _getLocalDb();
-    await db.delete(
-      'ledgers',
-      where: 'name = ?',
-      whereArgs: [name],
-    );
+    await db.delete('ledgers', where: 'name = ?', whereArgs: [name]);
   }
 
   static Future<void> _deleteLedgerBackend(String name) async {
@@ -954,10 +1056,11 @@ class ApiService {
   static Future<List<Staff>> _getAllStaffLocal() async {
     final db = await _getLocalDb();
     final results = await db.query('staff', orderBy: 'name');
-    return results.map((row) => Staff(
-      id: row['id'].toString(),
-      name: row['name'] as String,
-    )).toList();
+    return results
+        .map(
+          (row) => Staff(id: row['id'].toString(), name: row['name'] as String),
+        )
+        .toList();
   }
 
   static Future<List<Staff>> _getAllStaffBackend() async {
@@ -970,10 +1073,12 @@ class ApiService {
     final conn = await MySqlConnection.connect(settings);
     try {
       final results = await conn.query('SELECT * FROM staff ORDER BY name');
-      return results.map((row) => Staff(
-        id: row['id'].toString(),
-        name: row['name'] as String,
-      )).toList();
+      return results
+          .map(
+            (row) =>
+                Staff(id: row['id'].toString(), name: row['name'] as String),
+          )
+          .toList();
     } finally {
       await conn.close();
     }
@@ -1011,7 +1116,9 @@ class ApiService {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      final result = await conn.query('INSERT INTO staff (name) VALUES (?)', [staff.name]);
+      final result = await conn.query('INSERT INTO staff (name) VALUES (?)', [
+        staff.name,
+      ]);
       return Staff(id: result.insertId.toString(), name: staff.name);
     } finally {
       await conn.close();
@@ -1051,7 +1158,10 @@ class ApiService {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      await conn.query('UPDATE staff SET name = ? WHERE id = ?', [staff.name, int.parse(staff.id)]);
+      await conn.query('UPDATE staff SET name = ? WHERE id = ?', [
+        staff.name,
+        int.parse(staff.id),
+      ]);
       return staff;
     } finally {
       await conn.close();
@@ -1076,11 +1186,7 @@ class ApiService {
 
   static Future<void> _deleteStaffLocal(String staffId) async {
     final db = await _getLocalDb();
-    await db.delete(
-      'staff',
-      where: 'id = ?',
-      whereArgs: [int.parse(staffId)],
-    );
+    await db.delete('staff', where: 'id = ?', whereArgs: [int.parse(staffId)]);
   }
 
   static Future<void> _deleteStaffBackend(String staffId) async {
