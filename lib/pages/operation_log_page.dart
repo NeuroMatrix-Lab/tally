@@ -80,12 +80,15 @@ class _OperationLogPageState extends State<OperationLogPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
       body: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(16.0),
-            color: Colors.grey.shade100,
+            color: colorScheme.surfaceContainerHighest,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -93,11 +96,15 @@ class _OperationLogPageState extends State<OperationLogPage> {
                   children: [
                     Expanded(
                       child: TextField(
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: '搜索关键词',
-                          prefixIcon: Icon(Icons.search),
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          prefixIcon: Icon(Icons.search, color: theme.iconTheme.color),
+                          border: OutlineInputBorder(
+                            borderSide: BorderSide(color: colorScheme.outline),
+                          ),
+                          filled: true,
+                          fillColor: colorScheme.surface,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
                         onChanged: (value) {
                           setState(() {
@@ -128,7 +135,8 @@ class _OperationLogPageState extends State<OperationLogPage> {
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey),
+                            color: colorScheme.surface,
+                            border: Border.all(color: colorScheme.outline),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -139,12 +147,12 @@ class _OperationLogPageState extends State<OperationLogPage> {
                                   _startDate == null
                                       ? '开始日期'
                                       : DateFormat('yyyy-MM-dd').format(_startDate!),
-                                  style: const TextStyle(fontSize: 14),
+                                  style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
                                 ),
                               ),
                               if (_startDate != null)
                                 IconButton(
-                                  icon: const Icon(Icons.clear, size: 20),
+                                  icon: Icon(Icons.clear, size: 20, color: colorScheme.onSurface),
                                   onPressed: () {
                                     setState(() {
                                       _startDate = null;
@@ -153,7 +161,7 @@ class _OperationLogPageState extends State<OperationLogPage> {
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                 ),
-                              const Icon(Icons.calendar_today, size: 20),
+                              Icon(Icons.calendar_today, size: 20, color: colorScheme.onSurface),
                             ],
                           ),
                         ),
@@ -166,7 +174,8 @@ class _OperationLogPageState extends State<OperationLogPage> {
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey),
+                            color: colorScheme.surface,
+                            border: Border.all(color: colorScheme.outline),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -177,12 +186,12 @@ class _OperationLogPageState extends State<OperationLogPage> {
                                   _endDate == null
                                       ? '结束日期'
                                       : DateFormat('yyyy-MM-dd').format(_endDate!),
-                                  style: const TextStyle(fontSize: 14),
+                                  style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
                                 ),
                               ),
                               if (_endDate != null)
                                 IconButton(
-                                  icon: const Icon(Icons.clear, size: 20),
+                                  icon: Icon(Icons.clear, size: 20, color: colorScheme.onSurface),
                                   onPressed: () {
                                     setState(() {
                                       _endDate = null;
@@ -191,7 +200,7 @@ class _OperationLogPageState extends State<OperationLogPage> {
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                 ),
-                              const Icon(Icons.calendar_today, size: 20),
+                              Icon(Icons.calendar_today, size: 20, color: colorScheme.onSurface),
                             ],
                           ),
                         ),
@@ -255,7 +264,7 @@ class _OperationLogPageState extends State<OperationLogPage> {
                                   log.details!,
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: Colors.grey[600],
+                                    color: colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                             ],
@@ -263,7 +272,7 @@ class _OperationLogPageState extends State<OperationLogPage> {
                           trailing: Chip(
                             label: Text(log.type),
                             backgroundColor: _getTypeColor(log.type),
-                            labelStyle: const TextStyle(color: Colors.white, fontSize: 12),
+                            labelStyle: TextStyle(color: _getTypeLabelColor(log.type), fontSize: 12),
                           ),
                         ),
                       );
@@ -307,5 +316,11 @@ class _OperationLogPageState extends State<OperationLogPage> {
       default:
         return Colors.grey;
     }
+  }
+
+  Color _getTypeLabelColor(String type) {
+    final background = _getTypeColor(type);
+    final brightness = ThemeData.estimateBrightnessForColor(background);
+    return brightness == Brightness.dark ? Colors.white : Colors.black;
   }
 }
