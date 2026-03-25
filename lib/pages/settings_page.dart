@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -52,7 +54,37 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+  String? _validateModeSettings() {
+    if (_selectedMode == ConnectionMode.backend) {
+      final ip = _backendIpController.text.trim();
+      final port = int.tryParse(_backendPortController.text.trim());
+      if (ip.isEmpty) return '后端服务模式请填写服务器地址';
+      if (port == null || port <= 0 || port > 65535) return '后端服务端口无效，请输入 1-65535 的数字';
+    }
+
+    if (_selectedMode == ConnectionMode.database) {
+      final host = _dbHostController.text.trim();
+      final port = int.tryParse(_dbPortController.text.trim());
+      final user = _dbUserController.text.trim();
+      final dbName = _dbNameController.text.trim();
+      if (host.isEmpty || user.isEmpty || dbName.isEmpty) return '数据库直通模式请填写 host/user/dbName';
+      if (port == null || port <= 0 || port > 65535) return '数据库端口无效，请输入 1-65535 的数字';
+    }
+
+    return null;
+  }
+
   Future<void> _saveSettings() async {
+    final validationError = _validateModeSettings();
+    if (validationError != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(validationError), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
@@ -95,32 +127,38 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     try {
+      final validationError = _validateModeSettings();
+      if (validationError != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(validationError), backgroundColor: Colors.red),
+          );
+        }
+        return;
+      }
+
       String message;
       bool success = false;
 
       if (_selectedMode == ConnectionMode.backend) {
         final ip = _backendIpController.text.trim();
         final port = _backendPortController.text.trim();
-        
-        if (ip.isEmpty) {
-          message = '请输入服务器地址';
-        } else {
-          try {
-            final response = await http.get(
-              Uri.parse('http://$ip:$port/health'),
-            ).timeout(
-              const Duration(seconds: 10),
-            );
-            
-            if (response.statusCode == 200) {
-              message = '连接成功！服务器正常运行';
-              success = true;
-            } else {
-              message = '连接失败：服务器返回状态码 ${response.statusCode}';
-            }
-          } catch (e) {
-            message = '连接失败：无法连接到服务器\n错误: $e';
+
+        try {
+          final response = await http
+              .get(Uri.parse('http://$ip:$port/health'))
+              .timeout(const Duration(seconds: 10));
+
+          if (response.statusCode == 200) {
+            message = '连接成功！服务器正常运行';
+            success = true;
+          } else {
+            message = '连接失败：服务器返回状态码 ${response.statusCode}';
           }
+        } on TimeoutException {
+          message = '连接超时，请检查后端服务是否可达';
+        } catch (e) {
+          message = '连接失败：$e';
         }
       } else if (_selectedMode == ConnectionMode.database) {
         final host = _dbHostController.text.trim();
@@ -128,30 +166,27 @@ class _SettingsPageState extends State<SettingsPage> {
         final dbName = _dbNameController.text.trim();
         final user = _dbUserController.text.trim();
         final password = _dbPasswordController.text.trim();
-        
-        if (host.isEmpty || dbName.isEmpty || user.isEmpty) {
-          message = '请填写完整的数据库连接信息';
-        } else {
-          try {
-            final port = int.tryParse(portStr) ?? 3306;
-            
-            final settings = ConnectionSettings(
-              host: host,
-              port: port,
-              user: user,
-              password: password,
-              db: dbName,
-              timeout: Duration(seconds: 10),
-            );
-            
-            final connection = await MySqlConnection.connect(settings);
-            await connection.close();
-            
-            message = '数据库连接成功！';
-            success = true;
-          } catch (e) {
-            message = '数据库连接失败：$e';
-          }
+
+        try {
+          final port = int.tryParse(portStr) ?? 3306;
+          final settings = ConnectionSettings(
+            host: host,
+            port: port,
+            user: user,
+            password: password,
+            db: dbName,
+            timeout: const Duration(seconds: 10),
+          );
+
+          final connection = await MySqlConnection.connect(settings).timeout(const Duration(seconds: 10));
+          await connection.close();
+
+          message = '数据库连接成功！';
+          success = true;
+        } on TimeoutException {
+          message = '数据库连接超时，请检查数据库地址和网络';
+        } catch (e) {
+          message = '数据库连接失败：$e';
         }
       } else {
         message = '本地模式无需测试连接';

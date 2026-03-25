@@ -54,25 +54,29 @@ jobs:
         run: |
           VERSION="${{ steps.set_version.outputs.version }}"
           echo "Renaming APK with version: $VERSION"
-          if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
-            mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/tally-${VERSION}-android.apk
-            echo "APK renamed successfully"
-          else
-            echo "ERROR: APK file not found!"
+          APK_PATH=$(find build/app/outputs/flutter-apk -maxdepth 1 -name '*release*.apk' | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: APK file not found in build/app/outputs/flutter-apk"
+            find build/app/outputs/flutter-apk -maxdepth 1 -type f -print
             exit 1
           fi
+          TARGET_APK=build/app/outputs/flutter-apk/tally-${VERSION}-android.apk
+          mv "$APK_PATH" "$TARGET_APK"
+          echo "APK renamed successfully to $TARGET_APK"
       
       - name: Rename AppBundle
         run: |
           VERSION="${{ steps.set_version.outputs.version }}"
           echo "Renaming AppBundle with version: $VERSION"
-          if [ -f build/app/outputs/bundle/release/app-release.aab ]; then
-            mv build/app/outputs/bundle/release/app-release.aab build/app/outputs/bundle/release/tally-${VERSION}-android.aab
-            echo "AppBundle renamed successfully"
-          else
-            echo "ERROR: AppBundle file not found!"
+          AAB_PATH=$(find build/app/outputs/bundle/release -maxdepth 1 -name '*release*.aab' | head -n 1)
+          if [ -z "$AAB_PATH" ]; then
+            echo "ERROR: AppBundle file not found in build/app/outputs/bundle/release"
+            find build/app/outputs/bundle/release -maxdepth 1 -type f -print
             exit 1
           fi
+          TARGET_AAB=build/app/outputs/bundle/release/tally-${VERSION}-android.aab
+          mv "$AAB_PATH" "$TARGET_AAB"
+          echo "AppBundle renamed successfully to $TARGET_AAB"
       
       - name: List renamed files
         run: |
@@ -260,9 +264,9 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            builds/android/*
-            builds/windows/*
-            builds/macos/*
+            builds/android/**
+            builds/windows/**
+            builds/macos/**
           body: |
             ## What's Changed
             - Automatic build and release
@@ -271,3 +275,9 @@ jobs:
             - Android: APK and AppBundle
             - Windows: Zip archive
             - macOS: DMG installer
+
+      - name: Verify release assets
+        run: |
+          echo "=== Persisted artifacts in build directory ==="
+          find builds -type f -maxdepth 4
+          echo "Release step done"
