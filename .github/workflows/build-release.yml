@@ -22,6 +22,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Set Version
+        id: set_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag_name }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
+      
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -36,13 +47,39 @@ jobs:
           flutter build apk --release --no-tree-shake-icons
           flutter build appbundle --release --no-tree-shake-icons
       
+      - name: List Android build outputs
+        run: find build/app/outputs -type f
+      
       - name: Rename APK
         run: |
-          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/tally-${{ github.ref_name || github.event.inputs.tag_name }}-android.apk
+          VERSION="${{ steps.set_version.outputs.version }}"
+          echo "Renaming APK with version: $VERSION"
+          if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
+            mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/tally-${VERSION}-android.apk
+            echo "APK renamed successfully"
+          else
+            echo "ERROR: APK file not found!"
+            exit 1
+          fi
       
       - name: Rename AppBundle
         run: |
-          mv build/app/outputs/bundle/release/app-release.aab build/app/outputs/bundle/release/tally-${{ github.ref_name || github.event.inputs.tag_name }}-android.aab
+          VERSION="${{ steps.set_version.outputs.version }}"
+          echo "Renaming AppBundle with version: $VERSION"
+          if [ -f build/app/outputs/bundle/release/app-release.aab ]; then
+            mv build/app/outputs/bundle/release/app-release.aab build/app/outputs/bundle/release/tally-${VERSION}-android.aab
+            echo "AppBundle renamed successfully"
+          else
+            echo "ERROR: AppBundle file not found!"
+            exit 1
+          fi
+      
+      - name: List renamed files
+        run: |
+          echo "=== APK files ==="
+          find build/app/outputs -name "tally-*.apk"
+          echo "=== AAB files ==="
+          find build/app/outputs -name "tally-*.aab"
       
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
@@ -51,6 +88,7 @@ jobs:
           path: |
             build/app/outputs/flutter-apk/tally-*.apk
             build/app/outputs/bundle/release/tally-*.aab
+          if-no-files-found: error
 
   build-windows:
     runs-on: windows-latest
@@ -58,6 +96,17 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Set Version
+        id: set_version
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $VERSION = "${{ github.event.inputs.tag_name }}"
+          } else {
+            $VERSION = "${{ github.ref_name }}"
+          }
+          Write-Host "version=$VERSION" >> $env:GITHUB_OUTPUT
+          Write-Host "Using version: $VERSION"
       
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -71,17 +120,25 @@ jobs:
       - name: Build Windows Release
         run: flutter build windows --release
       
+      - name: List Windows build outputs
+        run: Get-ChildItem -Path build\windows\x64\runner\Release -Recurse -File
+      
       - name: Create Windows Zip
         run: |
-          $version = "${{ github.ref_name || github.event.inputs.tag_name }}"
+          $version = "${{ steps.set_version.outputs.version }}"
           $zipName = "tally-${version}-windows.zip"
+          Write-Host "Creating zip: $zipName"
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\windows\$zipName
+      
+      - name: List Windows zip file
+        run: Get-ChildItem -Path build\windows -Name "tally-*.zip"
       
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-builds
           path: build/windows/tally-*.zip
+          if-no-files-found: error
 
   build-macos:
     runs-on: macos-latest
@@ -89,6 +146,17 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Set Version
+        id: set_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag_name }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
       
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -102,18 +170,27 @@ jobs:
       - name: Build macOS Release
         run: flutter build macos --release
       
+      - name: List macOS build outputs
+        run: find build/macos/Build/Products/Release -type f
+      
       - name: Create macOS DMG
         run: |
-          version="${{ github.ref_name || github.event.inputs.tag_name }}"
+          version="${{ steps.set_version.outputs.version }}"
+          echo "Using version: $version"
           app_path="build/macos/Build/Products/Release/tally.app"
           dmg_path="build/macos/tally-${version}-macos.dmg"
+          echo "Creating DMG: $dmg_path"
           hdiutil create -srcfolder "$app_path" -volname "Tally" -fs HFS+ -format UDZO "$dmg_path"
+      
+      - name: List macOS DMG file
+        run: ls -la build/macos/tally-*.dmg
       
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-builds
           path: build/macos/tally-*.dmg
+          if-no-files-found: error
 
   release:
     needs: [build-android, build-windows, build-macos]
@@ -122,6 +199,17 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Set Version
+        id: set_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag_name }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
       
       - name: Create build directories
         run: |
@@ -147,14 +235,28 @@ jobs:
           name: macos-builds
           path: builds/macos
       
-      - name: List downloaded files
-        run: find builds -type f
+      - name: List all downloaded files
+        run: |
+          echo "=== Android files ==="
+          find builds/android -type f -ls
+          echo "=== Windows files ==="
+          find builds/windows -type f -ls
+          echo "=== macOS files ==="
+          find builds/macos -type f -ls
+      
+      - name: Verify Android files exist
+        run: |
+          if [ -z "$(find builds/android -name '*.apk' -o -name '*.aab')" ]; then
+            echo "ERROR: No Android files found!"
+            exit 1
+          fi
+          echo "Android files verified successfully"
       
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || github.event.inputs.tag_name }}
-          name: Release ${{ github.ref_name || github.event.inputs.tag_name }}
+          tag_name: ${{ steps.set_version.outputs.version }}
+          name: Release ${{ steps.set_version.outputs.version }}
           draft: false
           prerelease: false
           files: |
