@@ -436,7 +436,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
     required Function(String?) onChanged,
   }) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       items: [
         DropdownMenuItem(
           value: null,
