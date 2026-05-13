@@ -44,8 +44,14 @@ jobs:
       
       - name: Build Android Release
         run: |
-          flutter build apk --release --no-tree-shake-icons
-          flutter build appbundle --release --no-tree-shake-icons
+          VERSION="${{ steps.set_version.outputs.version }}"
+          # 去掉标签前缀的 'v'，比如 v1.0.0 -> 1.0.0
+          BUILD_NAME=$(echo $VERSION | sed 's/^v//')
+          # 构建简单的 versionCode，比如 1.0.0 -> 10000
+          BUILD_NUMBER=$(echo $BUILD_NAME | awk -F. '{printf("%d%02d%02d", $1, $2, $3)}')
+          echo "Building with build-name: $BUILD_NAME, build-number: $BUILD_NUMBER"
+          flutter build apk --release --no-tree-shake-icons --build-name=$BUILD_NAME --build-number=$BUILD_NUMBER
+          flutter build appbundle --release --no-tree-shake-icons --build-name=$BUILD_NAME --build-number=$BUILD_NUMBER
       
       - name: List Android build outputs
         run: find build/app/outputs -type f
