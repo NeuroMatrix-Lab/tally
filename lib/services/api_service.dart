@@ -13,6 +13,14 @@ enum ConnectionMode { local, backend, database }
 
 class ApiService {
   static Database? _localDb;
+  static WebSocket? _webSocket;
+  static StreamSubscription? _webSocketSubscription;
+  static String? _lastSyncTime;
+  static bool _isConnected = false;
+  static final _syncController = StreamController<bool>.broadcast();
+  
+  static Stream<bool> get syncStream => _syncController.stream;
+  static bool get isConnected => _isConnected;
 
   // 获取当前连接模式
   static Future<ConnectionMode> _getConnectionMode() async {
@@ -37,6 +45,23 @@ class ApiService {
     }
 
     return 'http://$host:$port';
+  }
+
+  static Future<String> _getWebSocketUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final host = prefs.getString('backendIp')?.trim() ?? '';
+    final portStr = prefs.getString('backendPort')?.trim() ?? '7378';
+
+    if (host.isEmpty) {
+      throw Exception('后端服务地址未配置，请在设置中填写');
+    }
+
+    final port = int.tryParse(portStr);
+    if (port == null || port <= 0 || port > 65535) {
+      throw Exception('后端服务端口无效，请输入 1-65535 之间的端口');
+    }
+
+    return 'ws://$host:$port/api/v1/ws';
   }
 
   static Future<void> _validateBackendConfig() async {
@@ -160,6 +185,167 @@ class ApiService {
     await db.insert('ledgers', {
       'name': '默认账本',
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  // ==================== WebSocket 同步 ====================
+
+  static Future<void> connectWebSocket() async {
+    try {
+      final mode = await _getConnectionMode();
+      if (mode != ConnectionMode.backend) {
+        return;
+      }
+
+      await disconnectWebSocket();
+
+      final wsUrl = await _getWebSocketUrl();
+      _webSocket = await WebSocket.connect(wsUrl);
+      
+      _webSocketSubscription = _webSocket?.listen(
+        (data) => _handleWebSocketMessage(data),
+        onError: (error) {
+          _isConnected = false;
+          _syncController.add(false);
+          print('WebSocket error: $error');
+        },
+        onDone: () {
+          _isConnected = false;
+          _syncController.add(false);
+          print('WebSocket disconnected');
+          // 尝试重连
+          Future.delayed(const Duration(seconds: 5), () => connectWebSocket());
+        },
+      );
+
+      _isConnected = true;
+      _syncController.add(true);
+      print('WebSocket connected');
+
+      // 连接后立即同步
+      await performIncrementalSync();
+    } catch (e) {
+      _isConnected = false;
+      _syncController.add(false);
+      print('Failed to connect to WebSocket: $e');
+      // 5秒后重连
+      Future.delayed(const Duration(seconds: 5), () => connectWebSocket());
+    }
+  }
+
+  static Future<void> disconnectWebSocket() async {
+    _webSocketSubscription?.cancel();
+    _webSocketSubscription = null;
+    if (_webSocket != null) {
+      await _webSocket!.close();
+      _webSocket = null;
+    }
+    _isConnected = false;
+    _syncController.add(false);
+  }
+
+  static void _handleWebSocketMessage(dynamic data) {
+    try {
+      final message = json.decode(data);
+      final entityType = message['entity_type'];
+      final eventType = message['event_type'];
+      
+      print('Received sync event: $eventType for $entityType');
+      
+      // 触发同步
+      performIncrementalSync();
+    } catch (e) {
+      print('Error handling WebSocket message: $e');
+    }
+  }
+
+  // ==================== 增量同步 ====================
+
+  static Future<void> performIncrementalSync() async {
+    try {
+      final mode = await _getConnectionMode();
+      if (mode != ConnectionMode.backend) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final lastSync = prefs.getString('lastSyncTime');
+
+      final baseUrl = await _getBackendBaseUrl();
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/v1/sync'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'lastSyncTime': lastSync}),
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = json.decode(response.body);
+        await _applySyncChanges(data);
+        
+        // 更新最后同步时间
+        await prefs.setString('lastSyncTime', data['serverTime']);
+        _lastSyncTime = data['serverTime'];
+        print('Sync completed successfully');
+      }
+    } catch (e) {
+      print('Incremental sync failed: $e');
+    }
+  }
+
+  static Future<void> _applySyncChanges(Map<String, dynamic> data) async {
+    final db = await _getLocalDb();
+    final batch = db.batch();
+
+    // 处理记录
+    final records = data['records'] as List? ?? [];
+    for (final recordJson in records) {
+      final record = Record.fromMap(recordJson);
+      batch.insert(
+        'records',
+        {
+          'id': record.id,
+          'record_id': record.id,
+          'date': record.date.toIso8601String(),
+          'category': record.category,
+          'work_content': record.workContent,
+          'amount': record.amount,
+          'ledger': record.ledger,
+          'image_url': record.imageUrl,
+          'staff_ids': json.encode(record.staffIds),
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+
+    // 处理删除的记录
+    final deletedRecordIds = data['deletedRecordIds'] as List? ?? [];
+    for (final id in deletedRecordIds) {
+      batch.delete('records', where: 'record_id = ?', whereArgs: [id]);
+    }
+
+    // 处理人员
+    final staffList = data['staff'] as List? ?? [];
+    for (final staffJson in staffList) {
+      final staff = Staff.fromMap(staffJson);
+      batch.insert(
+        'staff',
+        {
+          'id': int.tryParse(staff.id) ?? 0,
+          'name': staff.name,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+
+    // 处理账本
+    final ledgers = data['ledgers'] as List? ?? [];
+    for (final ledger in ledgers) {
+      batch.insert(
+        'ledgers',
+        {'name': ledger},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+
+    await batch.commit(noResult: true);
   }
 
   // ==================== HTTP API 调用（后端服务模式）====================
@@ -287,7 +473,7 @@ class ApiService {
   }
 
   static Future<List<Record>> _getAllRecordsBackend() async {
-    final data = await _httpGet('/api/records');
+    final data = await _httpGet('/api/v1/records');
     return (data as List).map((item) => Record.fromMap(item)).toList();
   }
 
@@ -334,7 +520,7 @@ class ApiService {
   }
 
   static Future<List<Record>> _getRecentRecordsBackend(int months) async {
-    final data = await _httpGet('/api/records/recent?months=$months');
+    final data = await _httpGet('/api/v1/records/recent?months=$months');
     return (data as List).map((item) => Record.fromMap(item)).toList();
   }
 
@@ -411,7 +597,7 @@ class ApiService {
     String? category,
     String? ledger,
   ) async {
-    final data = await _httpPost('/api/records/search', {
+    final data = await _httpPost('/api/v1/records/search', {
       'startDate': startDate.toIso8601String(),
       'endDate': endDate.toIso8601String(),
       'category': category,
@@ -460,7 +646,9 @@ class ApiService {
       case ConnectionMode.local:
         return _createRecordLocal(record);
       case ConnectionMode.backend:
-        return _createRecordBackend(record);
+        final result = await _createRecordBackend(record);
+        performIncrementalSync();
+        return result;
       case ConnectionMode.database:
         return _createRecordDatabase(record);
     }
@@ -483,7 +671,7 @@ class ApiService {
   }
 
   static Future<Record> _createRecordBackend(Record record) async {
-    final data = await _httpPost('/api/records', {
+    final data = await _httpPost('/api/v1/records', {
       'id': record.id,
       'date': record.date.toIso8601String(),
       'category': record.category,
@@ -530,7 +718,9 @@ class ApiService {
       case ConnectionMode.local:
         return _updateRecordLocal(record);
       case ConnectionMode.backend:
-        return _updateRecordBackend(record);
+        final result = await _updateRecordBackend(record);
+        performIncrementalSync();
+        return result;
       case ConnectionMode.database:
         return _updateRecordDatabase(record);
     }
@@ -557,7 +747,7 @@ class ApiService {
   }
 
   static Future<Record> _updateRecordBackend(Record record) async {
-    final data = await _httpPut('/api/records/${record.id}', {
+    final data = await _httpPut('/api/v1/records/${record.id}', {
       'date': record.date.toIso8601String(),
       'category': record.category,
       'workContent': record.workContent,
@@ -577,7 +767,7 @@ class ApiService {
         '''
         UPDATE records 
         SET date = ?, category = ?, work_content = ?, amount = ?, ledger = ?, image_url = ?, staff_ids = ?
-        WHERE record_id = ?
+        WHERE record_id = ? AND deleted_at IS NULL
       ''',
         [
           record.date.toIso8601String(),
@@ -606,6 +796,7 @@ class ApiService {
         break;
       case ConnectionMode.backend:
         await _deleteRecordBackend(recordId);
+        performIncrementalSync();
         break;
       case ConnectionMode.database:
         await _deleteRecordDatabase(recordId);
@@ -645,7 +836,7 @@ class ApiService {
   }
 
   static Future<void> _deleteRecordBackend(String recordId) async {
-    await _httpDelete('/api/records/$recordId');
+    await _httpDelete('/api/v1/records/$recordId');
   }
 
   static Future<void> _deleteRecordDatabase(String recordId) async {
@@ -713,7 +904,7 @@ class ApiService {
   }
 
   static Future<List<Record>> _getDeletedRecordsBackend() async {
-    final data = await _httpGet('/api/records/deleted');
+    final data = await _httpGet('/api/v1/records/deleted');
     return (data as List).map((item) => Record.fromMap(item)).toList();
   }
 
@@ -741,6 +932,7 @@ class ApiService {
         break;
       case ConnectionMode.backend:
         await _restoreRecordBackend(recordId);
+        performIncrementalSync();
         break;
       case ConnectionMode.database:
         await _restoreRecordDatabase(recordId);
@@ -780,7 +972,7 @@ class ApiService {
   }
 
   static Future<void> _restoreRecordBackend(String recordId) async {
-    await _httpPost('/api/records/$recordId/restore', {});
+    await _httpPost('/api/v1/records/$recordId/restore', {});
   }
 
   static Future<void> _restoreRecordDatabase(String recordId) async {
@@ -848,7 +1040,7 @@ class ApiService {
   }
 
   static Future<void> _permanentlyDeleteRecordBackend(String recordId) async {
-    await _httpDelete('/api/records/$recordId/permanent');
+    await _httpDelete('/api/v1/records/$recordId/permanent');
   }
 
   static Future<void> _permanentlyDeleteRecordDatabase(String recordId) async {
@@ -885,7 +1077,7 @@ class ApiService {
   }
 
   static Future<List<String>> _getAllLedgersBackend() async {
-    final data = await _httpGet('/api/ledgers');
+    final data = await _httpGet('/api/v1/ledgers');
     return (data as List).map((item) => item as String).toList();
   }
 
@@ -913,7 +1105,9 @@ class ApiService {
       case ConnectionMode.local:
         return _createLedgerLocal(name);
       case ConnectionMode.backend:
-        return _createLedgerBackend(name);
+        final result = await _createLedgerBackend(name);
+        performIncrementalSync();
+        return result;
       case ConnectionMode.database:
         return _createLedgerDatabase(name);
     }
@@ -926,7 +1120,7 @@ class ApiService {
   }
 
   static Future<String> _createLedgerBackend(String name) async {
-    await _httpPost('/api/ledgers', name);
+    await _httpPost('/api/v1/ledgers', name);
     return name;
   }
 
@@ -948,7 +1142,9 @@ class ApiService {
       case ConnectionMode.local:
         return _updateLedgerLocal(oldName, newName);
       case ConnectionMode.backend:
-        return _updateLedgerBackend(oldName, newName);
+        final result = await _updateLedgerBackend(oldName, newName);
+        performIncrementalSync();
+        return result;
       case ConnectionMode.database:
         return _updateLedgerDatabase(oldName, newName);
     }
@@ -978,7 +1174,7 @@ class ApiService {
     String oldName,
     String newName,
   ) async {
-    await _httpPut('/api/ledgers/$oldName', newName);
+    await _httpPut('/api/v1/ledgers/$oldName', newName);
     return newName;
   }
 
@@ -1012,6 +1208,7 @@ class ApiService {
         break;
       case ConnectionMode.backend:
         await _deleteLedgerBackend(name);
+        performIncrementalSync();
         break;
       case ConnectionMode.database:
         await _deleteLedgerDatabase(name);
@@ -1025,7 +1222,7 @@ class ApiService {
   }
 
   static Future<void> _deleteLedgerBackend(String name) async {
-    await _httpDelete('/api/ledgers/$name');
+    await _httpDelete('/api/v1/ledgers/$name');
   }
 
   static Future<void> _deleteLedgerDatabase(String name) async {
@@ -1064,7 +1261,7 @@ class ApiService {
   }
 
   static Future<List<Staff>> _getAllStaffBackend() async {
-    final data = await _httpGet('/api/staff');
+    final data = await _httpGet('/api/v1/staff');
     return (data as List).map((item) => Staff.fromMap(item)).toList();
   }
 
@@ -1095,7 +1292,9 @@ class ApiService {
       case ConnectionMode.local:
         return _addStaffLocal(staff);
       case ConnectionMode.backend:
-        return _addStaffBackend(staff);
+        final result = await _addStaffBackend(staff);
+        performIncrementalSync();
+        return result;
       case ConnectionMode.database:
         return _addStaffDatabase(staff);
     }
@@ -1108,7 +1307,7 @@ class ApiService {
   }
 
   static Future<Staff> _addStaffBackend(Staff staff) async {
-    final data = await _httpPost('/api/staff', {'name': staff.name});
+    final data = await _httpPost('/api/v1/staff', {'name': staff.name});
     return Staff.fromMap(data);
   }
 
@@ -1132,7 +1331,9 @@ class ApiService {
       case ConnectionMode.local:
         return _updateStaffLocal(staff);
       case ConnectionMode.backend:
-        return _updateStaffBackend(staff);
+        final result = await _updateStaffBackend(staff);
+        performIncrementalSync();
+        return result;
       case ConnectionMode.database:
         return _updateStaffDatabase(staff);
     }
@@ -1144,13 +1345,13 @@ class ApiService {
       'staff',
       {'name': staff.name},
       where: 'id = ?',
-      whereArgs: [int.parse(staff.id)],
+      whereArgs: [int.tryParse(staff.id) ?? 0],
     );
     return staff;
   }
 
   static Future<Staff> _updateStaffBackend(Staff staff) async {
-    await _httpPut('/api/staff/${staff.id}', {'name': staff.name});
+    await _httpPut('/api/v1/staff/${staff.id}', {'name': staff.name});
     return staff;
   }
 
@@ -1160,7 +1361,7 @@ class ApiService {
     try {
       await conn.query('UPDATE staff SET name = ? WHERE id = ?', [
         staff.name,
-        int.parse(staff.id),
+        int.tryParse(staff.id) ?? 0,
       ]);
       return staff;
     } finally {
@@ -1177,6 +1378,7 @@ class ApiService {
         break;
       case ConnectionMode.backend:
         await _deleteStaffBackend(staffId);
+        performIncrementalSync();
         break;
       case ConnectionMode.database:
         await _deleteStaffDatabase(staffId);
@@ -1186,18 +1388,18 @@ class ApiService {
 
   static Future<void> _deleteStaffLocal(String staffId) async {
     final db = await _getLocalDb();
-    await db.delete('staff', where: 'id = ?', whereArgs: [int.parse(staffId)]);
+    await db.delete('staff', where: 'id = ?', whereArgs: [int.tryParse(staffId) ?? 0]);
   }
 
   static Future<void> _deleteStaffBackend(String staffId) async {
-    await _httpDelete('/api/staff/$staffId');
+    await _httpDelete('/api/v1/staff/$staffId');
   }
 
   static Future<void> _deleteStaffDatabase(String staffId) async {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      await conn.query('DELETE FROM staff WHERE id = ?', [int.parse(staffId)]);
+      await conn.query('DELETE FROM staff WHERE id = ?', [int.tryParse(staffId) ?? 0]);
     } finally {
       await conn.close();
     }
@@ -1229,7 +1431,7 @@ class ApiService {
   }
 
   static Future<List<String>> _getWorkContentsBackend() async {
-    final data = await _httpGet('/api/work-contents');
+    final data = await _httpGet('/api/v1/work-contents');
     return (data as List).map((item) => item as String).toList();
   }
 
@@ -1272,7 +1474,7 @@ class ApiService {
   }
 
   static Future<List<String>> _getCategoriesBackend() async {
-    final data = await _httpGet('/api/categories');
+    final data = await _httpGet('/api/v1/categories');
     return (data as List).map((item) => item as String).toList();
   }
 
@@ -1391,5 +1593,10 @@ class ApiService {
   // 恢复已删除记录（别名方法，与main.dart中的调用匹配）
   static Future<void> restoreDeletedRecord(String recordId) async {
     return await restoreRecord(recordId);
+  }
+
+  static void dispose() {
+    _syncController.close();
+    disconnectWebSocket();
   }
 }

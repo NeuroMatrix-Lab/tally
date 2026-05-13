@@ -1,8 +1,12 @@
 use axum::{
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path, State,
+    },
+    response::IntoResponse,
     routing::{get, post, put, delete},
     Router,
     Json,
-    extract::{Path, State},
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
@@ -16,14 +20,24 @@ use anyhow::Result;
 use tracing::{info, error, Level};
 use tracing_subscriber::FmtSubscriber;
 use std::sync::atomic::{AtomicU64, Ordering};
+use futures_util::{SinkExt, StreamExt};
+use async_broadcast::{broadcast, Sender, Receiver};
 
 #[derive(Clone)]
 struct AppState {
     db: MySqlPool,
     request_count: Arc<AtomicU64>,
+    tx: Sender<SyncMessage>,
 }
 
-// 记录模型
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SyncMessage {
+    event_type: String,
+    entity_type: String,
+    entity_id: Option<String>,
+    timestamp: DateTime<Utc>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Record {
     id: String,
@@ -39,16 +53,20 @@ struct Record {
     image_url: Option<String>,
     #[serde(rename = "staffIds")]
     staff_ids: Vec<String>,
+    #[serde(rename = "updatedAt")]
+    updated_at: Option<String>,
+    #[serde(rename = "deletedAt")]
+    deleted_at: Option<String>,
 }
 
-// 人员模型
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Staff {
     id: String,
     name: String,
+    #[serde(rename = "updatedAt")]
+    updated_at: Option<String>,
 }
 
-// 创建记录请求
 #[derive(Debug, Deserialize)]
 struct CreateRecordRequest {
     id: String,
@@ -64,7 +82,6 @@ struct CreateRecordRequest {
     staff_ids: Vec<String>,
 }
 
-// 更新记录请求
 #[derive(Debug, Deserialize)]
 struct UpdateRecordRequest {
     date: String,
@@ -79,19 +96,16 @@ struct UpdateRecordRequest {
     staff_ids: Vec<String>,
 }
 
-// 创建人员请求
 #[derive(Debug, Deserialize)]
 struct CreateStaffRequest {
     name: String,
 }
 
-// 更新人员请求
 #[derive(Debug, Deserialize)]
 struct UpdateStaffRequest {
     name: String,
 }
 
-// 搜索记录请求
 #[derive(Debug, Deserialize)]
 struct SearchRecordsRequest {
     #[serde(rename = "startDate")]
@@ -100,6 +114,25 @@ struct SearchRecordsRequest {
     end_date: String,
     category: Option<String>,
     ledger: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IncrementalSyncRequest {
+    #[serde(rename = "lastSyncTime")]
+    last_sync_time: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct IncrementalSyncResponse {
+    records: Vec<Record>,
+    staff: Vec<Staff>,
+    ledgers: Vec<String>,
+    #[serde(rename = "deletedRecordIds")]
+    deleted_record_ids: Vec<String>,
+    #[serde(rename = "deletedStaffIds")]
+    deleted_staff_ids: Vec<String>,
+    #[serde(rename = "serverTime")]
+    server_time: String,
 }
 
 #[tokio::main]
@@ -113,7 +146,7 @@ async fn main() -> Result<()> {
         .json()
         .init();
 
-    info!("Starting Tally Server...");
+    info!("Starting Tally Server with WebSocket Sync...");
 
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "mysql://tally_user:tally_password@localhost:3306/tally_db".to_string());
@@ -129,9 +162,12 @@ async fn main() -> Result<()> {
 
     init_database(&pool).await?;
 
+    let (tx, _rx) = broadcast(100);
+
     let state = Arc::new(AppState {
         db: pool,
         request_count: Arc::new(AtomicU64::new(0)),
+        tx,
     });
 
     let cors = CorsLayer::new()
@@ -142,6 +178,8 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/api/v1/health", get(health_check))
         .route("/api/v1/metrics", get(get_metrics))
+        .route("/api/v1/ws", get(ws_handler))
+        .route("/api/v1/sync", post(incremental_sync))
         .route("/api/v1/records", get(get_all_records))
         .route("/api/v1/records/recent", get(get_recent_records))
         .route("/api/v1/records/search", post(search_records))
@@ -198,14 +236,14 @@ async fn init_database(pool: &MySqlPool) -> Result<()> {
             INDEX idx_date (date),
             INDEX idx_category (category),
             INDEX idx_ledger (ledger),
-            INDEX idx_deleted_at (deleted_at)
+            INDEX idx_deleted_at (deleted_at),
+            INDEX idx_updated_at (updated_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         "#
     )
     .execute(pool)
     .await?;
 
-    // 创建已删除记录表
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS deleted_records (
@@ -227,33 +265,32 @@ async fn init_database(pool: &MySqlPool) -> Result<()> {
     .execute(pool)
     .await?;
 
-    // 创建账本表
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS ledgers (
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         "#
     )
     .execute(pool)
     .await?;
 
-    // 创建人员表
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS staff (
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         "#
     )
     .execute(pool)
     .await?;
 
-    // 插入默认账本
     sqlx::query("INSERT IGNORE INTO ledgers (name) VALUES ('默认账本')")
         .execute(pool)
         .await?;
@@ -263,7 +300,6 @@ async fn init_database(pool: &MySqlPool) -> Result<()> {
     Ok(())
 }
 
-// 健康检查
 async fn health_check(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, StatusCode> {
     let request_count = state.request_count.load(Ordering::Relaxed);
 
@@ -284,7 +320,6 @@ async fn health_check(State(state): State<Arc<AppState>>) -> Result<Json<serde_j
     }
 }
 
-// 获取监控指标
 async fn get_metrics(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, StatusCode> {
     let request_count = state.request_count.load(Ordering::Relaxed);
 
@@ -307,54 +342,169 @@ async fn get_metrics(State(state): State<Arc<AppState>>) -> Result<Json<serde_js
     })))
 }
 
-// 获取所有记录
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(|socket| handle_socket(socket, state))
+}
+
+async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
+    let (mut sender, mut receiver) = socket.split();
+    let mut rx = state.tx.subscribe();
+    
+    info!("New WebSocket client connected");
+
+    let mut send_task = tokio::spawn(async move {
+        while let Ok(msg) = rx.recv().await {
+            let msg_str = serde_json::to_string(&msg).unwrap();
+            if sender.send(Message::Text(msg_str)).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(Ok(msg)) = receiver.next().await {
+            match msg {
+                Message::Text(text) => {
+                    info!("Received message from client: {}", text);
+                }
+                Message::Close(_) => {
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
+
+    tokio::select! {
+        _ = (&mut send_task) => recv_task.abort(),
+        _ = (&mut recv_task) => send_task.abort(),
+    }
+    
+    info!("WebSocket client disconnected");
+}
+
+fn broadcast_sync_event(state: &Arc<AppState>, entity_type: &str, event_type: &str, entity_id: Option<String>) {
+    let msg = SyncMessage {
+        event_type: event_type.to_string(),
+        entity_type: entity_type.to_string(),
+        entity_id,
+        timestamp: Utc::now(),
+    };
+    
+    let _ = state.tx.broadcast(msg);
+    info!("Broadcasted {} event for {}", event_type, entity_type);
+}
+
+async fn incremental_sync(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<IncrementalSyncRequest>,
+) -> Result<Json<IncrementalSyncResponse>, StatusCode> {
+    let last_sync_time = req.last_sync_time
+        .and_then(|t| DateTime::parse_from_rfc3339(&t).ok())
+        .map(|dt| dt.with_timezone(&Utc));
+
+    let server_time = Utc::now();
+
+    let (records, deleted_record_ids) = if let Some(since) = last_sync_time {
+        let records = sqlx::query(
+            r#"
+            SELECT record_id, date, category, work_content, amount, ledger, image_url, staff_ids, updated_at, deleted_at
+            FROM records
+            WHERE updated_at > ?
+            ORDER BY updated_at DESC
+            "#
+        )
+        .bind(since)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        let mut active_records = Vec::new();
+        let mut deleted_ids = Vec::new();
+
+        for row in records {
+            let record_id: String = row.get("record_id");
+            let deleted_at: Option<DateTime<Utc>> = row.get("deleted_at");
+            
+            if deleted_at.is_some() {
+                deleted_ids.push(record_id);
+            } else {
+                active_records.push(row_to_record(row));
+            }
+        }
+
+        (active_records, deleted_ids)
+    } else {
+        let records = get_all_records_from_db(&state.db).await?;
+        (records, Vec::new())
+    };
+
+    let staff = get_all_staff_from_db(&state.db, last_sync_time).await?;
+    
+    let ledgers = get_all_ledgers_from_db(&state.db).await?;
+
+    let deleted_staff_ids = Vec::new();
+
+    Ok(Json(IncrementalSyncResponse {
+        records,
+        staff,
+        ledgers,
+        deleted_record_ids,
+        deleted_staff_ids,
+        server_time: server_time.to_rfc3339(),
+    }))
+}
+
 async fn get_all_records(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Record>>, StatusCode> {
+    let records = get_all_records_from_db(&state.db).await?;
+    Ok(Json(records))
+}
+
+async fn get_all_records_from_db(db: &MySqlPool) -> Result<Vec<Record>, StatusCode> {
     let rows = sqlx::query(
         r#"
         SELECT 
-            record_id as "record_id!",
-            date as "date!",
-            category as "category!",
-            work_content as "work_content!",
-            amount as "amount!",
-            ledger as "ledger!",
-            image_url,
-            staff_ids
+            record_id, date, category, work_content, amount, ledger, image_url, staff_ids, updated_at, deleted_at
         FROM records 
         WHERE deleted_at IS NULL 
         ORDER BY date DESC
         "#
     )
-    .fetch_all(&state.db)
+    .fetch_all(db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let records: Vec<Record> = rows
-        .into_iter()
-        .map(|row| {
-            let staff_ids: Vec<String> = row.try_get::<String, _>("staff_ids")
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default();
-
-            Record {
-                id: row.get("record_id"),
-                record_id: row.get("record_id"),
-                date: row.get::<DateTime<chrono::Utc>, _>("date").to_rfc3339(),
-                category: row.get("category"),
-                work_content: row.get("work_content"),
-                amount: row.get::<f64, _>("amount"),
-                ledger: row.get("ledger"),
-                image_url: row.try_get::<Option<String>, _>("image_url").ok().flatten(),
-                staff_ids,
-            }
-        })
-        .collect();
-
-    Ok(Json(records))
+    let records = rows.into_iter().map(row_to_record).collect();
+    Ok(records)
 }
 
-// 获取最近记录
+fn row_to_record(row: sqlx::mysql::MySqlRow) -> Record {
+    let staff_ids: Vec<String> = row.try_get::<String, _>("staff_ids")
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+
+    let updated_at: Option<DateTime<Utc>> = row.get("updated_at");
+    let deleted_at: Option<DateTime<Utc>> = row.get("deleted_at");
+
+    Record {
+        id: row.get("record_id"),
+        record_id: row.get("record_id"),
+        date: row.get::<DateTime<Utc>, _>("date").to_rfc3339(),
+        category: row.get("category"),
+        work_content: row.get("work_content"),
+        amount: row.get::<f64, _>("amount"),
+        ledger: row.get("ledger"),
+        image_url: row.try_get::<Option<String>, _>("image_url").ok().flatten(),
+        staff_ids,
+        updated_at: updated_at.map(|dt| dt.to_rfc3339()),
+        deleted_at: deleted_at.map(|dt| dt.to_rfc3339()),
+    }
+}
+
 async fn get_recent_records(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
@@ -366,14 +516,7 @@ async fn get_recent_records(
     let rows = sqlx::query(
         r#"
         SELECT 
-            record_id as "record_id!",
-            date as "date!",
-            category as "category!",
-            work_content as "work_content!",
-            amount as "amount!",
-            ledger as "ledger!",
-            image_url,
-            staff_ids
+            record_id, date, category, work_content, amount, ledger, image_url, staff_ids, updated_at, deleted_at
         FROM records 
         WHERE deleted_at IS NULL 
         AND date >= DATE_SUB(NOW(), INTERVAL ? MONTH)
@@ -385,32 +528,10 @@ async fn get_recent_records(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let records: Vec<Record> = rows
-        .into_iter()
-        .map(|row| {
-            let staff_ids: Vec<String> = row.try_get::<String, _>("staff_ids")
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default();
-
-            Record {
-                id: row.get("record_id"),
-                record_id: row.get("record_id"),
-                date: row.get::<DateTime<chrono::Utc>, _>("date").to_rfc3339(),
-                category: row.get("category"),
-                work_content: row.get("work_content"),
-                amount: row.get::<f64, _>("amount"),
-                ledger: row.get("ledger"),
-                image_url: row.try_get::<Option<String>, _>("image_url").ok().flatten(),
-                staff_ids,
-            }
-        })
-        .collect();
-
+    let records = rows.into_iter().map(row_to_record).collect();
     Ok(Json(records))
 }
 
-// 搜索记录
 async fn search_records(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SearchRecordsRequest>,
@@ -418,14 +539,7 @@ async fn search_records(
     let mut query = String::from(
         r#"
         SELECT 
-            record_id as "record_id!",
-            date as "date!",
-            category as "category!",
-            work_content as "work_content!",
-            amount as "amount!",
-            ledger as "ledger!",
-            image_url,
-            staff_ids
+            record_id, date, category, work_content, amount, ledger, image_url, staff_ids, updated_at, deleted_at
         FROM records 
         WHERE deleted_at IS NULL 
         AND date BETWEEN ? AND ?
@@ -447,7 +561,7 @@ async fn search_records(
     }
     query.push_str(" ORDER BY date DESC");
 
-    let mut sql_query = sqlx::query_as::<_, RecordRow>(&query)
+    let mut sql_query = sqlx::query(&query)
         .bind(start_date)
         .bind(end_date);
 
@@ -463,15 +577,10 @@ async fn search_records(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let records: Vec<Record> = rows
-        .into_iter()
-        .map(|row| row_to_record(row))
-        .collect();
-
+    let records = rows.into_iter().map(row_to_record).collect();
     Ok(Json(records))
 }
 
-// 创建记录
 async fn create_record(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateRecordRequest>,
@@ -503,7 +612,7 @@ async fn create_record(
 
     let record = Record {
         id: req.id.clone(),
-        record_id: req.id,
+        record_id: req.id.clone(),
         date: req.date,
         category: req.category,
         work_content: req.work_content,
@@ -511,12 +620,15 @@ async fn create_record(
         ledger: req.ledger,
         image_url: req.image_url,
         staff_ids: req.staff_ids,
+        updated_at: Some(Utc::now().to_rfc3339()),
+        deleted_at: None,
     };
+
+    broadcast_sync_event(&state, "record", "created", Some(req.id));
 
     Ok(Json(record))
 }
 
-// 更新记录
 async fn update_record(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -550,7 +662,7 @@ async fn update_record(
 
     let record = Record {
         id: id.clone(),
-        record_id: id,
+        record_id: id.clone(),
         date: req.date,
         category: req.category,
         work_content: req.work_content,
@@ -558,17 +670,19 @@ async fn update_record(
         ledger: req.ledger,
         image_url: req.image_url,
         staff_ids: req.staff_ids,
+        updated_at: Some(Utc::now().to_rfc3339()),
+        deleted_at: None,
     };
+
+    broadcast_sync_event(&state, "record", "updated", Some(id));
 
     Ok(Json(record))
 }
 
-// 删除记录（软删除）
 async fn delete_record(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    // 先获取记录信息
     let row = sqlx::query(
         r#"
         SELECT record_id, date, category, work_content, amount, ledger, image_url, staff_ids
@@ -590,7 +704,6 @@ async fn delete_record(
     let image_url: Option<String> = row.try_get::<Option<String>, _>("image_url").ok().flatten();
     let staff_ids: Option<String> = row.try_get::<Option<String>, _>("staff_ids").ok().flatten();
 
-    // 插入到deleted_records表
     sqlx::query(
         r#"
         INSERT INTO deleted_records (record_id, date, category, work_content, amount, ledger, image_url, staff_ids, deleted_at)
@@ -609,29 +722,22 @@ async fn delete_record(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // 软删除记录
     sqlx::query("UPDATE records SET deleted_at = NOW() WHERE record_id = ?")
         .bind(&id)
         .execute(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    broadcast_sync_event(&state, "record", "deleted", Some(id));
+
     Ok(StatusCode::NO_CONTENT)
 }
 
-// 获取已删除记录
 async fn get_deleted_records(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Record>>, StatusCode> {
     let rows = sqlx::query(
         r#"
         SELECT 
-            record_id as "record_id!",
-            date as "date!",
-            category as "category!",
-            work_content as "work_content!",
-            amount as "amount!",
-            ledger as "ledger!",
-            image_url,
-            staff_ids
+            record_id, date, category, work_content, amount, ledger, image_url, staff_ids, deleted_at as updated_at
         FROM deleted_records 
         ORDER BY deleted_at DESC
         "#
@@ -640,37 +746,36 @@ async fn get_deleted_records(State(state): State<Arc<AppState>>) -> Result<Json<
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let records: Vec<Record> = rows
-        .into_iter()
-        .map(|row| {
-            let staff_ids: Vec<String> = row.try_get::<String, _>("staff_ids")
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default();
+    let records = rows.into_iter().map(|row| {
+        let staff_ids: Vec<String> = row.try_get::<String, _>("staff_ids")
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
 
-            Record {
-                id: row.get("record_id"),
-                record_id: row.get("record_id"),
-                date: row.get::<DateTime<chrono::Utc>, _>("date").to_rfc3339(),
-                category: row.get("category"),
-                work_content: row.get("work_content"),
-                amount: row.get::<f64, _>("amount"),
-                ledger: row.get("ledger"),
-                image_url: row.try_get::<Option<String>, _>("image_url").ok().flatten(),
-                staff_ids,
-            }
-        })
-        .collect();
+        let updated_at: Option<DateTime<Utc>> = row.get("updated_at");
+
+        Record {
+            id: row.get("record_id"),
+            record_id: row.get("record_id"),
+            date: row.get::<DateTime<Utc>, _>("date").to_rfc3339(),
+            category: row.get("category"),
+            work_content: row.get("work_content"),
+            amount: row.get::<f64, _>("amount"),
+            ledger: row.get("ledger"),
+            image_url: row.try_get::<Option<String>, _>("image_url").ok().flatten(),
+            staff_ids,
+            updated_at: updated_at.map(|dt| dt.to_rfc3339()),
+            deleted_at: updated_at.map(|dt| dt.to_rfc3339()),
+        }
+    }).collect();
 
     Ok(Json(records))
 }
 
-// 恢复已删除记录
 async fn restore_record(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    // 从deleted_records表获取记录
     let row = sqlx::query(
         r#"
         SELECT record_id, date, category, work_content, amount, ledger, image_url, staff_ids
@@ -692,7 +797,6 @@ async fn restore_record(
     let image_url: Option<String> = row.try_get::<Option<String>, _>("image_url").ok().flatten();
     let staff_ids: Option<String> = row.try_get::<Option<String>, _>("staff_ids").ok().flatten();
 
-    // 插入到records表
     sqlx::query(
         r#"
         INSERT INTO records (record_id, date, category, work_content, amount, ledger, image_url, staff_ids, created_at, updated_at)
@@ -721,17 +825,17 @@ async fn restore_record(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // 从deleted_records表删除
     sqlx::query("DELETE FROM deleted_records WHERE record_id = ?")
         .bind(&id)
         .execute(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    broadcast_sync_event(&state, "record", "restored", Some(id));
+
     Ok(StatusCode::NO_CONTENT)
 }
 
-// 永久删除记录
 async fn permanently_delete_record(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -745,22 +849,21 @@ async fn permanently_delete_record(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// 获取所有账本
 async fn get_all_ledgers(State(state): State<Arc<AppState>>) -> Result<Json<Vec<String>>, StatusCode> {
-    let rows = sqlx::query("SELECT name FROM ledgers ORDER BY name")
-        .fetch_all(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let ledgers: Vec<String> = rows
-        .into_iter()
-        .map(|row| row.get("name"))
-        .collect();
-
+    let ledgers = get_all_ledgers_from_db(&state.db).await?;
     Ok(Json(ledgers))
 }
 
-// 创建账本
+async fn get_all_ledgers_from_db(db: &MySqlPool) -> Result<Vec<String>, StatusCode> {
+    let rows = sqlx::query("SELECT name FROM ledgers ORDER BY name")
+        .fetch_all(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let ledgers = rows.into_iter().map(|row| row.get("name")).collect();
+    Ok(ledgers)
+}
+
 async fn create_ledger(
     State(state): State<Arc<AppState>>,
     Json(name): Json<String>,
@@ -771,10 +874,11 @@ async fn create_ledger(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    broadcast_sync_event(&state, "ledger", "created", Some(name.clone()));
+
     Ok(Json(name))
 }
 
-// 更新账本
 async fn update_ledger(
     State(state): State<Arc<AppState>>,
     Path(old_name): Path<String>,
@@ -787,7 +891,6 @@ async fn update_ledger(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // 更新所有使用该账本的记录
     sqlx::query("UPDATE records SET ledger = ? WHERE ledger = ?")
         .bind(&new_name)
         .bind(&old_name)
@@ -795,10 +898,11 @@ async fn update_ledger(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    broadcast_sync_event(&state, "ledger", "updated", Some(new_name.clone()));
+
     Ok(Json(new_name))
 }
 
-// 删除账本
 async fn delete_ledger(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
@@ -809,28 +913,45 @@ async fn delete_ledger(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    broadcast_sync_event(&state, "ledger", "deleted", Some(name));
+
     Ok(StatusCode::NO_CONTENT)
 }
 
-// 获取所有人员
 async fn get_all_staff(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Staff>>, StatusCode> {
-    let rows = sqlx::query("SELECT id, name FROM staff ORDER BY name")
-        .fetch_all(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let staff: Vec<Staff> = rows
-        .into_iter()
-        .map(|row| Staff {
-            id: row.get::<i32, _>("id").to_string(),
-            name: row.get("name"),
-        })
-        .collect();
-
+    let staff = get_all_staff_from_db(&state.db, None).await?;
     Ok(Json(staff))
 }
 
-// 创建人员
+async fn get_all_staff_from_db(db: &MySqlPool, since: Option<DateTime<Utc>>) -> Result<Vec<Staff>, StatusCode> {
+    let query = if let Some(since) = since {
+        sqlx::query(
+            "SELECT id, name, updated_at FROM staff WHERE updated_at > ? ORDER BY name"
+        ).bind(since)
+    } else {
+        sqlx::query("SELECT id, name, updated_at FROM staff ORDER BY name")
+    };
+
+    let rows = query
+        .fetch_all(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let staff = rows
+        .into_iter()
+        .map(|row| {
+            let updated_at: Option<DateTime<Utc>> = row.get("updated_at");
+            Staff {
+                id: row.get::<i32, _>("id").to_string(),
+                name: row.get("name"),
+                updated_at: updated_at.map(|dt| dt.to_rfc3339()),
+            }
+        })
+        .collect();
+
+    Ok(staff)
+}
+
 async fn create_staff(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateStaffRequest>,
@@ -844,51 +965,56 @@ async fn create_staff(
     let staff = Staff {
         id: result.last_insert_id().to_string(),
         name: req.name,
+        updated_at: Some(Utc::now().to_rfc3339()),
     };
+
+    broadcast_sync_event(&state, "staff", "created", Some(staff.id.clone()));
 
     Ok(Json(staff))
 }
 
-// 更新人员
 async fn update_staff(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<UpdateStaffRequest>,
 ) -> Result<Json<Staff>, StatusCode> {
-    let id: i32 = id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+    let id_i32: i32 = id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 
     sqlx::query("UPDATE staff SET name = ? WHERE id = ?")
         .bind(&req.name)
-        .bind(id)
+        .bind(id_i32)
         .execute(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let staff = Staff {
-        id: id.to_string(),
+        id: id.clone(),
         name: req.name,
+        updated_at: Some(Utc::now().to_rfc3339()),
     };
+
+    broadcast_sync_event(&state, "staff", "updated", Some(id));
 
     Ok(Json(staff))
 }
 
-// 删除人员
 async fn delete_staff(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let id: i32 = id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+    let id_i32: i32 = id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 
     sqlx::query("DELETE FROM staff WHERE id = ?")
-        .bind(id)
+        .bind(id_i32)
         .execute(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    broadcast_sync_event(&state, "staff", "deleted", Some(id));
+
     Ok(StatusCode::NO_CONTENT)
 }
 
-// 获取工作内容列表
 async fn get_work_contents(State(state): State<Arc<AppState>>) -> Result<Json<Vec<String>>, StatusCode> {
     let rows = sqlx::query(
         r#"
@@ -901,15 +1027,10 @@ async fn get_work_contents(State(state): State<Arc<AppState>>) -> Result<Json<Ve
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let contents: Vec<String> = rows
-        .into_iter()
-        .map(|row| row.get("work_content"))
-        .collect();
-
+    let contents = rows.into_iter().map(|row| row.get("work_content")).collect();
     Ok(Json(contents))
 }
 
-// 获取类别列表
 async fn get_categories(State(state): State<Arc<AppState>>) -> Result<Json<Vec<String>>, StatusCode> {
     let rows = sqlx::query(
         r#"
@@ -922,41 +1043,6 @@ async fn get_categories(State(state): State<Arc<AppState>>) -> Result<Json<Vec<S
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let categories: Vec<String> = rows
-        .into_iter()
-        .map(|row| row.get("category"))
-        .collect();
-
+    let categories = rows.into_iter().map(|row| row.get("category")).collect();
     Ok(Json(categories))
-}
-
-// 辅助结构体和函数
-#[derive(sqlx::FromRow)]
-struct RecordRow {
-    record_id: String,
-    date: DateTime<Utc>,
-    category: String,
-    work_content: String,
-    amount: f64,
-    ledger: String,
-    image_url: Option<String>,
-    staff_ids: Option<String>,
-}
-
-fn row_to_record(row: RecordRow) -> Record {
-    let staff_ids: Vec<String> = row.staff_ids
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
-
-    Record {
-        id: row.record_id.clone(),
-        record_id: row.record_id,
-        date: row.date.to_rfc3339(),
-        category: row.category,
-        work_content: row.work_content,
-        amount: row.amount,
-        ledger: row.ledger,
-        image_url: row.image_url,
-        staff_ids,
-    }
 }
