@@ -19,15 +19,14 @@ use tower_http::compression::CompressionLayer;
 use anyhow::Result;
 use tracing::{info, error, Level};
 use tracing_subscriber::FmtSubscriber;
-use std::sync::atomic::{AtomicU64, Ordering};
 use futures_util::{SinkExt, StreamExt};
-use async_broadcast::{broadcast, Sender, Receiver};
+use tokio::sync::broadcast;
 
 #[derive(Clone)]
 struct AppState {
     db: MySqlPool,
-    request_count: Arc<AtomicU64>,
-    tx: Sender<SyncMessage>,
+    request_count: Arc<std::sync::atomic::AtomicU64>,
+    tx: broadcast::Sender<SyncMessage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,7 +136,7 @@ struct IncrementalSyncResponse {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let subscriber = FmtSubscriber::builder()
+    let _subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
         .with_target(false)
         .with_thread_ids(true)
@@ -162,11 +161,11 @@ async fn main() -> Result<()> {
 
     init_database(&pool).await?;
 
-    let (tx, _rx) = broadcast(100);
+    let (tx, _rx) = broadcast::channel(100);
 
     let state = Arc::new(AppState {
         db: pool,
-        request_count: Arc::new(AtomicU64::new(0)),
+        request_count: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         tx,
     });
 
@@ -301,7 +300,7 @@ async fn init_database(pool: &MySqlPool) -> Result<()> {
 }
 
 async fn health_check(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, StatusCode> {
-    let request_count = state.request_count.load(Ordering::Relaxed);
+    let request_count = state.request_count.load(std::sync::atomic::Ordering::Relaxed);
 
     match sqlx::query("SELECT 1").fetch_one(&state.db).await {
         Ok(_) => {
@@ -310,7 +309,7 @@ async fn health_check(State(state): State<Arc<AppState>>) -> Result<Json<serde_j
                 "status": "healthy",
                 "database": "connected",
                 "uptime": "running",
-                "request_count": request_count
+                "requestCount": request_count
             })))
         },
         Err(e) => {
@@ -321,7 +320,7 @@ async fn health_check(State(state): State<Arc<AppState>>) -> Result<Json<serde_j
 }
 
 async fn get_metrics(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, StatusCode> {
-    let request_count = state.request_count.load(Ordering::Relaxed);
+    let request_count = state.request_count.load(std::sync::atomic::Ordering::Relaxed);
 
     let db_stats = sqlx::query("SELECT COUNT(*) as count FROM records WHERE deleted_at IS NULL")
         .fetch_one(&state.db)
@@ -333,10 +332,10 @@ async fn get_metrics(State(state): State<Arc<AppState>>) -> Result<Json<serde_js
     Ok(Json(serde_json::json!({
         "server": {
             "status": "running",
-            "request_count": request_count
+            "requestCount": request_count
         },
         "database": {
-            "total_records": record_count
+            "totalRecords": record_count
         },
         "version": "1.0.0"
     })))
@@ -346,14 +345,15 @@ async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(|socket| handle_socket(socket, state))
+    ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
-    let (mut sender, mut receiver) = socket.split();
     let mut rx = state.tx.subscribe();
     
     info!("New WebSocket client connected");
+
+    let (mut sender, mut receiver) = socket.split();
 
     let mut send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
@@ -394,7 +394,7 @@ fn broadcast_sync_event(state: &Arc<AppState>, entity_type: &str, event_type: &s
         timestamp: Utc::now(),
     };
     
-    let _ = state.tx.broadcast(msg);
+    let _ = state.tx.send(msg);
     info!("Broadcasted {} event for {}", event_type, entity_type);
 }
 
