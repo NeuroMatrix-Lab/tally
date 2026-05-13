@@ -126,6 +126,32 @@ class _HomePageState extends State<HomePage> {
     _pageController = PageController();
     _loadRecords();
     _loadStaffList();
+    _initSync();
+  }
+
+  Future<void> _initSync() async {
+    // 监听同步事件
+    ApiService.syncStream.listen((shouldSync) {
+      if (mounted) {
+        setState(() {
+          _isServerConnected = shouldSync;
+        });
+        if (shouldSync) {
+          _loadRecords();
+          _loadStaffList();
+        }
+      }
+    });
+    
+    // 连接WebSocket
+    ApiService.connectWebSocket();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    ApiService.dispose();
+    super.dispose();
   }
 
   Future<void> _loadStaffList() async {
@@ -150,11 +176,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
+
 
   Future<void> _syncFromServer() async {
     if (_isSyncing) return;
@@ -164,15 +186,18 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      // 先测试连接状态
-      await _testServerConnection();
+      // 使用增量同步
+      await ApiService.performIncrementalSync();
 
+      // 刷新本地数据
       final records = await ApiService.getRecentRecords(months: 3);
       final ledgers = await ApiService.syncLedgers();
+      final staffList = await ApiService.getStaffList();
 
       if (mounted) {
         setState(() {
           _records = records;
+          _staffList = staffList;
           _ledgers.clear();
           _ledgers.addAll(ledgers);
           if (!_ledgers.contains(_defaultLedger) && _ledgers.isNotEmpty) {
@@ -184,6 +209,7 @@ class _HomePageState extends State<HomePage> {
         _saveRecords();
       }
     } catch (e) {
+      print('Sync error: $e');
       if (mounted) {
         setState(() {
           _isSyncing = false;
@@ -359,7 +385,6 @@ class _HomePageState extends State<HomePage> {
 
     try {
       await ApiService.createRecord(newRecord);
-      await _syncFromServer();
     } catch (e) {
       print('Error creating record on server: $e');
     }
@@ -383,7 +408,6 @@ class _HomePageState extends State<HomePage> {
 
     try {
       await ApiService.deleteRecord(record.id);
-      await _syncFromServer();
     } catch (e) {
       print('Error deleting record on server: $e');
     }
@@ -410,7 +434,6 @@ class _HomePageState extends State<HomePage> {
     // 尝试上传到服务器
     try {
       await ApiService.updateRecord(updatedRecord);
-      await _syncFromServer();
 
       // 显示成功消息
       if (mounted) {
@@ -448,7 +471,6 @@ class _HomePageState extends State<HomePage> {
         details:
             '工作内容: ${record.workContent}, 金额: ¥${record.amount}, 类别: ${record.category}',
       );
-      await _syncFromServer();
     } catch (e) {
       print('Error restoring record on server: $e');
     }
