@@ -16,6 +16,9 @@ anyhow = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+futures-util = "0.3"
+async-broadcast = "0.7"
+axum-extra = "0.9"
 
 [[bin]]
 name = "tally-server"
