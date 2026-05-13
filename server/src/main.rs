@@ -10,11 +10,17 @@ use sqlx::{mysql::MySqlPoolOptions, MySqlPool, Row};
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
+use tower_http::compression::CompressionLayer;
 use anyhow::Result;
+use tracing::{info, error, Level};
+use tracing_subscriber::FmtSubscriber;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Clone)]
 struct AppState {
     db: MySqlPool,
+    request_count: Arc<AtomicU64>,
 }
 
 // 记录模型
@@ -98,74 +104,82 @@ struct SearchRecordsRequest {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 从环境变量获取数据库连接信息
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::INFO)
+        .with_target(false)
+        .with_thread_ids(true)
+        .with_file(true)
+        .with_line_number(true)
+        .json()
+        .init();
+
+    info!("Starting Tally Server...");
+
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "mysql://tally_user:tally_password@localhost:3306/tally_db".to_string());
 
     println!("Connecting to database...");
-    
-    // 创建数据库连接池
+
     let pool = MySqlPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
         .await?;
 
-    println!("Database connected successfully!");
+    info!("Database connected successfully!");
 
-    // 初始化数据库表
     init_database(&pool).await?;
 
-    let state = Arc::new(AppState { db: pool });
+    let state = Arc::new(AppState {
+        db: pool,
+        request_count: Arc::new(AtomicU64::new(0)),
+    });
 
-    // 配置CORS
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
-    // 构建路由
     let app = Router::new()
-        // 记录相关API
-        .route("/api/records", get(get_all_records))
-        .route("/api/records/recent", get(get_recent_records))
-        .route("/api/records/search", post(search_records))
-        .route("/api/records", post(create_record))
-        .route("/api/records/:id", put(update_record))
-        .route("/api/records/:id", delete(delete_record))
-        // 已删除记录API
-        .route("/api/records/deleted", get(get_deleted_records))
-        .route("/api/records/:id/restore", post(restore_record))
-        .route("/api/records/:id/permanent", delete(permanently_delete_record))
-        // 账本相关API
-        .route("/api/ledgers", get(get_all_ledgers))
-        .route("/api/ledgers", post(create_ledger))
-        .route("/api/ledgers/:name", put(update_ledger))
-        .route("/api/ledgers/:name", delete(delete_ledger))
-        // 人员相关API
-        .route("/api/staff", get(get_all_staff))
-        .route("/api/staff", post(create_staff))
-        .route("/api/staff/:id", put(update_staff))
-        .route("/api/staff/:id", delete(delete_staff))
-        // 工作内容和类别
-        .route("/api/work-contents", get(get_work_contents))
-        .route("/api/categories", get(get_categories))
-        // 健康检查
-        .route("/health", get(health_check))
+        .route("/api/v1/health", get(health_check))
+        .route("/api/v1/metrics", get(get_metrics))
+        .route("/api/v1/records", get(get_all_records))
+        .route("/api/v1/records/recent", get(get_recent_records))
+        .route("/api/v1/records/search", post(search_records))
+        .route("/api/v1/records", post(create_record))
+        .route("/api/v1/records/:id", put(update_record))
+        .route("/api/v1/records/:id", delete(delete_record))
+        .route("/api/v1/records/deleted", get(get_deleted_records))
+        .route("/api/v1/records/:id/restore", post(restore_record))
+        .route("/api/v1/records/:id/permanent", delete(permanently_delete_record))
+        .route("/api/v1/ledgers", get(get_all_ledgers))
+        .route("/api/v1/ledgers", post(create_ledger))
+        .route("/api/v1/ledgers/:name", put(update_ledger))
+        .route("/api/v1/ledgers/:name", delete(delete_ledger))
+        .route("/api/v1/staff", get(get_all_staff))
+        .route("/api/v1/staff", post(create_staff))
+        .route("/api/v1/staff/:id", put(update_staff))
+        .route("/api/v1/staff/:id", delete(delete_staff))
+        .route("/api/v1/work-contents", get(get_work_contents))
+        .route("/api/v1/categories", get(get_categories))
         .layer(cors)
+        .layer(CompressionLayer::new())
+        .layer(TraceLayer::new_for_http())
         .with_state(state);
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "7378".to_string());
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-    
-    println!("Server running on http://0.0.0.0:{}", port);
-    
+    let addr = format!("0.0.0.0:{}", port);
+
+    info!("Server listening on {}", addr);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
 
 async fn init_database(pool: &MySqlPool) -> Result<()> {
-    // 创建记录表
+    info!("Initializing database tables...");
+
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS records (
@@ -251,14 +265,46 @@ async fn init_database(pool: &MySqlPool) -> Result<()> {
 
 // 健康检查
 async fn health_check(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, StatusCode> {
-    // 测试数据库连接
+    let request_count = state.request_count.load(Ordering::Relaxed);
+
     match sqlx::query("SELECT 1").fetch_one(&state.db).await {
-        Ok(_) => Ok(Json(serde_json::json!({
-            "status": "healthy",
-            "database": "connected"
-        }))),
-        Err(_) => Err(StatusCode::SERVICE_UNAVAILABLE),
+        Ok(_) => {
+            info!("Health check passed");
+            Ok(Json(serde_json::json!({
+                "status": "healthy",
+                "database": "connected",
+                "uptime": "running",
+                "request_count": request_count
+            })))
+        },
+        Err(e) => {
+            error!("Health check failed: {:?}", e);
+            Err(StatusCode::SERVICE_UNAVAILABLE)
+        }
     }
+}
+
+// 获取监控指标
+async fn get_metrics(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, StatusCode> {
+    let request_count = state.request_count.load(Ordering::Relaxed);
+
+    let db_stats = sqlx::query("SELECT COUNT(*) as count FROM records WHERE deleted_at IS NULL")
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let record_count: i64 = db_stats.get("count");
+
+    Ok(Json(serde_json::json!({
+        "server": {
+            "status": "running",
+            "request_count": request_count
+        },
+        "database": {
+            "total_records": record_count
+        },
+        "version": "1.0.0"
+    })))
 }
 
 // 获取所有记录
