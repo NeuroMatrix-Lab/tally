@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  tally-db:
+    image: mysql:8.0
+    container_name: tally-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: tally_db
+      MYSQL_USER: tally_user
+      MYSQL_PASSWORD: tally_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - tally-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "tally_user", "-ptally_password"]
+      timeout: 20s
+      retries: 10
+
+  tally-server:
+    build: .
+    container_name: tally-server
+    restart: always
+    ports:
+      - "7378:7378"
+    environment:
+      DATABASE_URL: mysql://tally_user:tally_password@tally-db:3306/tally_db
+      PORT: 7378
+    depends_on:
+      tally-db:
+        condition: service_healthy
+
+volumes:
+  tally-db-data:
