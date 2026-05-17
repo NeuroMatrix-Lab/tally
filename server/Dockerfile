@@ -18,7 +18,7 @@ WORKDIR /app
 COPY --from=builder /app/target/release/tally-server ./
 
 ENV PORT=7378
-ENV DATABASE_URL=mysql://tally_user:tally_password@localhost:3306/tally_db
+ENV DATABASE_URL=mysql://user:password@localhost:3306/tally
 
 EXPOSE 7378
 

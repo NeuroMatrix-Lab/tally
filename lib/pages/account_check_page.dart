@@ -435,40 +435,84 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
     required String hintText,
     required Function(String?) onChanged,
   }) {
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      items: [
-        DropdownMenuItem(
-          value: null,
-          child: Text(
-            hintText,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 153 / 255),
-              fontSize: 12,
+    return GestureDetector(
+      onTap: () {
+        showDialog(
+          context: context,
+          builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: Text('选择$hintText'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    itemBuilder: (context, index) {
+                      final option = options[index];
+                      final isSelected = value == option;
+
+                      return ListTile(
+                        title: Text(option),
+                        leading: isSelected
+                            ? Icon(Icons.check,
+                                color: Theme.of(context).colorScheme.primary)
+                            : null,
+                        onTap: () {
+                          Navigator.pop(context);
+                          onChanged(isSelected ? null : option);
+                        },
+                      );
+                    },
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      onChanged(null);
+                    },
+                    child: const Text('清除选择'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        constraints: const BoxConstraints(minHeight: 36),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                value ?? hintText,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: value == null
+                      ? Theme.of(context).colorScheme.onSurface.withAlpha(153)
+                      : Theme.of(context).colorScheme.onSurface,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
+            Icon(
+              Icons.arrow_drop_down,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ],
         ),
-        ...options.map(
-          (option) => DropdownMenuItem(
-            value: option,
-            child: Text(option, style: const TextStyle(fontSize: 12)),
-          ),
-        ),
-      ],
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        border: OutlineInputBorder(
-          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        isDense: true,
       ),
-      style: const TextStyle(fontSize: 12),
     );
   }
 
@@ -558,21 +602,25 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
         );
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
           border: Border.all(color: Theme.of(context).colorScheme.outline),
           borderRadius: BorderRadius.circular(4),
         ),
+        constraints: const BoxConstraints(minHeight: 36),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              displayText,
-              style: TextStyle(
-                fontSize: 12,
-                color: _selectedStaff.isEmpty
-                    ? Theme.of(context).colorScheme.onSurface.withAlpha(153)
-                    : Theme.of(context).colorScheme.onSurface,
+            Expanded(
+              child: Text(
+                displayText,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _selectedStaff.isEmpty
+                      ? Theme.of(context).colorScheme.onSurface.withAlpha(153)
+                      : Theme.of(context).colorScheme.onSurface,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             Icon(

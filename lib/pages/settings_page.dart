@@ -79,7 +79,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (validationError != null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(validationError), backgroundColor: Colors.red),
+          SnackBar(content: Text(validationError), backgroundColor: Theme.of(context).colorScheme.error),
         );
       }
       return;
@@ -131,7 +131,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (validationError != null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(validationError), backgroundColor: Colors.red),
+            SnackBar(content: Text(validationError), backgroundColor: Theme.of(context).colorScheme.error),
           );
         }
         return;
@@ -197,7 +197,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
-            backgroundColor: success ? Colors.green : Colors.red,
+            backgroundColor: success ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.error,
             duration: const Duration(seconds: 3),
           ),
         );
@@ -207,7 +207,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('测试失败: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
@@ -299,7 +299,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 });
               },
             ),
-            Icon(icon, color: isSelected ? Theme.of(context).primaryColor : Colors.grey),
+            Icon(icon, color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -310,14 +310,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? Theme.of(context).primaryColor : Colors.black87,
+                      color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   Text(
                     subtitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                     ),
                   ),
                 ],
@@ -528,9 +528,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(
+                      child: const CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
                       ),
                     )
                   : const Icon(Icons.save),
