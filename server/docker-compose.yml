@@ -7,9 +7,9 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: tally_db
-      MYSQL_USER: tally_user
-      MYSQL_PASSWORD: tally_password
+      MYSQL_DATABASE: tally
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
     ports:
       - "3306:3306"
     volumes:
@@ -26,11 +26,8 @@ services:
     ports:
       - "7378:7378"
     environment:
-      DATABASE_URL: mysql://tally_user:tally_password@tally-db:3306/tally_db
+      DATABASE_URL: mysql://user:password@tally-db:3306/tally
       PORT: 7378
-    depends_on:
-      tally-db:
-        condition: service_healthy
 
 volumes:
   tally-db-data:
