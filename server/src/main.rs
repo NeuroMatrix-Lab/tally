@@ -148,7 +148,7 @@ async fn main() -> Result<()> {
     info!("Starting Tally Server with WebSocket Sync...");
 
     let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "mysql://tally_user:tally_password@localhost:3306/tally_db".to_string());
+        .expect("DATABASE_URL must be set. Example: mysql://user:password@host:3306/tally");
 
     println!("Connecting to database...");
 

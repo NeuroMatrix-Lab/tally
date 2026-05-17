@@ -32,7 +32,7 @@ docker build -t tally-server .
 docker run -d \
   --name tally-server \
   -p 7378:7378 \
-  -e DATABASE_URL=mysql://user:pass@host:3306/tally_db \
+  -e DATABASE_URL=mysql://user:password@host:3306/tally \
   tally-server
 ```
 
@@ -48,7 +48,7 @@ cargo run
 需要设置数据库连接：
 
 ```bash
-export DATABASE_URL=mysql://user:pass@host:3306/tally_db
+export DATABASE_URL=mysql://user:password@host:3306/tally
 export PORT=7378
 ```
 
