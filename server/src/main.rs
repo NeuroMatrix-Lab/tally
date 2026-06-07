@@ -243,7 +243,7 @@ async fn init_database(pool: &MySqlPool) -> Result<()> {
     .execute(pool)
     .await?;
 
-
+    sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS ledgers (
             id INT AUTO_INCREMENT PRIMARY KEY,
