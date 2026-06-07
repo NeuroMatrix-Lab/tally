@@ -148,7 +148,7 @@ async fn main() -> Result<()> {
     info!("Starting Tally Server with WebSocket Sync...");
 
     let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set. Example: mysql://user:password@host:3306/tally");
+        .expect("DATABASE_URL must be set. Example: mysql://user:***@host:3306/tally");
 
     println!("Connecting to database...");
 
@@ -243,28 +243,7 @@ async fn init_database(pool: &MySqlPool) -> Result<()> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS deleted_records (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            record_id VARCHAR(255) NOT NULL,
-            date DATETIME NOT NULL,
-            category VARCHAR(255) NOT NULL,
-            work_content TEXT NOT NULL,
-            amount DECIMAL(10, 2) NOT NULL,
-            ledger VARCHAR(255) NOT NULL,
-            image_url TEXT,
-            staff_ids JSON,
-            deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_record_id (record_id),
-            INDEX idx_deleted_at (deleted_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        "#
-    )
-    .execute(pool)
-    .await?;
 
-    sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS ledgers (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -283,7 +262,9 @@ async fn init_database(pool: &MySqlPool) -> Result<()> {
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            deleted_at DATETIME DEFAULT NULL,
+            INDEX idx_staff_deleted_at (deleted_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         "#
     )
@@ -446,7 +427,16 @@ async fn incremental_sync(
     
     let ledgers = get_all_ledgers_from_db(&state.db).await?;
 
-    let deleted_staff_ids = Vec::new();
+    let deleted_staff_ids = if let Some(since) = last_sync_time {
+        let rows = sqlx::query("SELECT id FROM staff WHERE deleted_at > ? AND deleted_at IS NOT NULL")
+            .bind(since)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        rows.into_iter().map(|row| row.get::<i32, _>("id").to_string()).collect()
+    } else {
+        Vec::new()
+    };
 
     Ok(Json(IncrementalSyncResponse {
         records,
@@ -683,50 +673,15 @@ async fn delete_record(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let row = sqlx::query(
-        r#"
-        SELECT record_id, date, category, work_content, amount, ledger, image_url, staff_ids
-        FROM records 
-        WHERE record_id = ? AND deleted_at IS NULL
-        "#
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|_| StatusCode::NOT_FOUND)?;
-
-    let record_id: String = row.get("record_id");
-    let date: DateTime<Utc> = row.get("date");
-    let category: String = row.get("category");
-    let work_content: String = row.get("work_content");
-    let amount: f64 = row.get("amount");
-    let ledger: String = row.get("ledger");
-    let image_url: Option<String> = row.try_get::<Option<String>, _>("image_url").ok().flatten();
-    let staff_ids: Option<String> = row.try_get::<Option<String>, _>("staff_ids").ok().flatten();
-
-    sqlx::query(
-        r#"
-        INSERT INTO deleted_records (record_id, date, category, work_content, amount, ledger, image_url, staff_ids, deleted_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-        "#
-    )
-    .bind(&record_id)
-    .bind(date)
-    .bind(&category)
-    .bind(&work_content)
-    .bind(amount)
-    .bind(&ledger)
-    .bind(&image_url)
-    .bind(&staff_ids)
-    .execute(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    sqlx::query("UPDATE records SET deleted_at = NOW() WHERE record_id = ?")
+    let result = sqlx::query("UPDATE records SET deleted_at = NOW() WHERE record_id = ? AND deleted_at IS NULL")
         .bind(&id)
         .execute(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
 
     broadcast_sync_event(&state, "record", "deleted", Some(id));
 
@@ -737,8 +692,9 @@ async fn get_deleted_records(State(state): State<Arc<AppState>>) -> Result<Json<
     let rows = sqlx::query(
         r#"
         SELECT 
-            record_id, date, category, work_content, amount, ledger, image_url, staff_ids, deleted_at as updated_at
-        FROM deleted_records 
+            record_id, date, category, work_content, amount, ledger, image_url, staff_ids, updated_at, deleted_at
+        FROM records 
+        WHERE deleted_at IS NOT NULL
         ORDER BY deleted_at DESC
         "#
     )
@@ -746,29 +702,7 @@ async fn get_deleted_records(State(state): State<Arc<AppState>>) -> Result<Json<
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let records = rows.into_iter().map(|row| {
-        let staff_ids: Vec<String> = row.try_get::<String, _>("staff_ids")
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
-
-        let updated_at: Option<DateTime<Utc>> = row.get("updated_at");
-
-        Record {
-            id: row.get("record_id"),
-            record_id: row.get("record_id"),
-            date: row.get::<DateTime<Utc>, _>("date").to_rfc3339(),
-            category: row.get("category"),
-            work_content: row.get("work_content"),
-            amount: row.get::<f64, _>("amount"),
-            ledger: row.get("ledger"),
-            image_url: row.try_get::<Option<String>, _>("image_url").ok().flatten(),
-            staff_ids,
-            updated_at: updated_at.map(|dt| dt.to_rfc3339()),
-            deleted_at: updated_at.map(|dt| dt.to_rfc3339()),
-        }
-    }).collect();
-
+    let records = rows.into_iter().map(row_to_record).collect();
     Ok(Json(records))
 }
 
@@ -776,60 +710,15 @@ async fn restore_record(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let row = sqlx::query(
-        r#"
-        SELECT record_id, date, category, work_content, amount, ledger, image_url, staff_ids
-        FROM deleted_records 
-        WHERE record_id = ?
-        "#
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|_| StatusCode::NOT_FOUND)?;
-
-    let record_id: String = row.get("record_id");
-    let date: DateTime<Utc> = row.get("date");
-    let category: String = row.get("category");
-    let work_content: String = row.get("work_content");
-    let amount: f64 = row.get("amount");
-    let ledger: String = row.get("ledger");
-    let image_url: Option<String> = row.try_get::<Option<String>, _>("image_url").ok().flatten();
-    let staff_ids: Option<String> = row.try_get::<Option<String>, _>("staff_ids").ok().flatten();
-
-    sqlx::query(
-        r#"
-        INSERT INTO records (record_id, date, category, work_content, amount, ledger, image_url, staff_ids, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE
-        deleted_at = NULL,
-        date = VALUES(date),
-        category = VALUES(category),
-        work_content = VALUES(work_content),
-        amount = VALUES(amount),
-        ledger = VALUES(ledger),
-        image_url = VALUES(image_url),
-        staff_ids = VALUES(staff_ids),
-        updated_at = NOW()
-        "#
-    )
-    .bind(&record_id)
-    .bind(date)
-    .bind(&category)
-    .bind(&work_content)
-    .bind(amount)
-    .bind(&ledger)
-    .bind(&image_url)
-    .bind(&staff_ids)
-    .execute(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    sqlx::query("DELETE FROM deleted_records WHERE record_id = ?")
+    let result = sqlx::query("UPDATE records SET deleted_at = NULL WHERE record_id = ? AND deleted_at IS NOT NULL")
         .bind(&id)
         .execute(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
 
     broadcast_sync_event(&state, "record", "restored", Some(id));
 
@@ -840,11 +729,15 @@ async fn permanently_delete_record(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    sqlx::query("DELETE FROM deleted_records WHERE record_id = ?")
+    let result = sqlx::query("DELETE FROM records WHERE record_id = ? AND deleted_at IS NOT NULL")
         .bind(&id)
         .execute(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -926,10 +819,10 @@ async fn get_all_staff(State(state): State<Arc<AppState>>) -> Result<Json<Vec<St
 async fn get_all_staff_from_db(db: &MySqlPool, since: Option<DateTime<Utc>>) -> Result<Vec<Staff>, StatusCode> {
     let query = if let Some(since) = since {
         sqlx::query(
-            "SELECT id, name, updated_at FROM staff WHERE updated_at > ? ORDER BY name"
+            "SELECT id, name, updated_at FROM staff WHERE updated_at > ? AND deleted_at IS NULL ORDER BY name"
         ).bind(since)
     } else {
-        sqlx::query("SELECT id, name, updated_at FROM staff ORDER BY name")
+        sqlx::query("SELECT id, name, updated_at FROM staff WHERE deleted_at IS NULL ORDER BY name")
     };
 
     let rows = query
@@ -1004,11 +897,15 @@ async fn delete_staff(
 ) -> Result<StatusCode, StatusCode> {
     let id_i32: i32 = id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    sqlx::query("DELETE FROM staff WHERE id = ?")
+    let result = sqlx::query("UPDATE staff SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL")
         .bind(id_i32)
         .execute(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
 
     broadcast_sync_event(&state, "staff", "deleted", Some(id));
 
