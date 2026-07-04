@@ -17,25 +17,22 @@ Flutter 前端 + Rust 后端，支持多设备同步。
 - WebSocket 实时同步（多设备同时在线）
 
 
-## 跑起来
+## 下载
 
-### 前端
+👉 **[GitHub Releases](https://github.com/NeuroMatrix-Lab/tally/releases)**
 
-```bash
-git clone https://github.com/NeuroMatrix-Lab/tally.git
-cd tally
-flutter pub get
-flutter run
-```
+下载对应平台的安装包：
+- Android — APK 或 AAB（应用商店）
+- Windows — ZIP 解压即用
 
-### 后端
+
+## 自己部署后端
 
 ```bash
 export DB_HOST=127.0.0.1
 export DB_PORT=3306
 export DB_USER=你的用户名
-export DB_PASSWORD=你的密码
-export DB_NAME=你的数据库名
+export DB_PASSWORD=*** DB_NAME=你的数据库名
 
 cd server && cargo run
 ```
