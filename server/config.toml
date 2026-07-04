@@ -4,6 +4,6 @@ port = 7378
 [database]
 host = "127.0.0.1"
 port = 3306
-user = "tally_user"
-password = "tally_password"
-name = "tally_db"
+user = "YOUR_USER"
+password = "YOUR_PASSWORD"
+name = "YOUR_DB"

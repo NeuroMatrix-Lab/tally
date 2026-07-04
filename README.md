@@ -48,7 +48,7 @@ flutter run
 ### 启动后端（可选）
 
 ```bash
-export DATABASE_URL="mysql://tally_user:tally_password@localhost:3306/tally_db"
+export DATABASE_URL="mysql://YOUR_USER:YOUR_PASSWORD@localhost:3306/YOUR_DB"
 cd server
 cargo run
 ```
