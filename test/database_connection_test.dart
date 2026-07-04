@@ -5,13 +5,25 @@ void main() async {
   print('🔧 数据库连接测试脚本');
   print('=' * 50);
   
-  // 数据库连接配置
+  // 从环境变量读取配置，未设置则使用默认值
+  final host = Platform.environment['DB_HOST'] ?? 'localhost';
+  final port = int.tryParse(Platform.environment['DB_PORT'] ?? '3306') ?? 3306;
+  final user = Platform.environment['DB_USER'] ?? '';
+  final password = Platform.environment['DB_PASSWORD'] ?? '';
+  final dbName = Platform.environment['DB_NAME'] ?? '';
+  
+  if (user.isEmpty || dbName.isEmpty) {
+    print('❌ 请设置环境变量: DB_USER, DB_NAME');
+    print('   Linux/macOS 示例: DB_USER=user DB_NAME=db dart run test/database_connection_test.dart');
+    return;
+  }
+  
   final settings = ConnectionSettings(
-    host: '120.220.73.186',
-    port: 7378,
-    user: 'tally_user',
-    password: 'tally_password',
-    db: 'tally_db',
+    host: host,
+    port: port,
+    user: user,
+    password: password,
+    db: dbName,
   );
   
   print('📊 连接配置信息:');
@@ -23,17 +35,14 @@ void main() async {
   try {
     print('\n🔗 尝试连接数据库...');
     
-    // 测试连接
     final connection = await MySqlConnection.connect(settings);
     print('✅ 数据库连接成功！');
     
-    // 测试查询
     print('\n🔍 测试数据库查询...');
     final results = await connection.query('SELECT COUNT(*) as count FROM records WHERE deleted_at IS NULL');
     final count = results.first['count'];
     print('✅ 查询成功！当前记录数: $count');
     
-    // 检查表结构
     print('\n📋 检查表结构...');
     final tables = await connection.query('SHOW TABLES');
     print('   数据库中的表:');
@@ -41,7 +50,6 @@ void main() async {
       print('     - ${table.values?.first}');
     }
     
-    // 检查records表结构
     print('\n📊 检查records表结构...');
     final columns = await connection.query('DESCRIBE records');
     print('   records表字段:');
@@ -49,7 +57,6 @@ void main() async {
       print('     - ${column['Field']} (${column['Type']})');
     }
     
-    // 测试插入操作
     print('\n➕ 测试插入操作...');
     try {
       final insertResult = await connection.query(
@@ -65,7 +72,6 @@ void main() async {
       );
       print('✅ 插入操作成功！插入ID: ${insertResult.insertId}');
       
-      // 删除测试数据
       await connection.query('DELETE FROM records WHERE work_content = ?', ['数据库连接测试']);
       print('🗑️ 已清理测试数据');
     } catch (e) {
@@ -94,13 +100,15 @@ void main() async {
   }
   
   // 测试网络连通性
-  print('\n🌐 测试网络连通性...');
-  try {
-    final socket = await Socket.connect('120.220.73.186', 7378, timeout: Duration(seconds: 10));
-    print('✅ 网络连通性正常');
-    socket.destroy();
-  } catch (e) {
-    print('❌ 网络连通性测试失败: $e');
+  if (host != 'localhost') {
+    print('\n🌐 测试网络连通性...');
+    try {
+      final socket = await Socket.connect(host, port, timeout: Duration(seconds: 10));
+      print('✅ 网络连通性正常');
+      socket.destroy();
+    } catch (e) {
+      print('❌ 网络连通性测试失败: $e');
+    }
   }
   
   print('\n✨ 测试脚本执行完成！');

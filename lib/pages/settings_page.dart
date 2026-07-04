@@ -4,12 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:mysql1/mysql1.dart';
-
-enum ConnectionMode {
-  local,
-  backend,
-  database,
-}
+import '../services/api_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});

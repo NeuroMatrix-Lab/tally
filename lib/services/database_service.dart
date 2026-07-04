@@ -3,12 +3,7 @@ import 'package:mysql1/mysql1.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/record.dart';
 import '../models/staff.dart';
-
-enum ConnectionMode {
-  local,
-  backend,
-  database,
-}
+import 'api_service.dart';
 
 class DatabaseService {
   // 获取当前连接模式
