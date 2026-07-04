@@ -1245,10 +1245,23 @@ class ApiService {
 
   static Future<void> _deleteLedgerLocal(String name) async {
     final db = await _getLocalDb();
+    // 先删除该账本下的所有记录
+    await db.delete(
+      'records',
+      where: 'ledger = ?',
+      whereArgs: [name],
+    );
     await db.delete('ledgers', where: 'name = ?', whereArgs: [name]);
   }
 
   static Future<void> _deleteLedgerBackend(String name) async {
+    // 先获取该账本下的所有记录
+    final records = await _getAllRecordsBackend();
+    final ledgerRecords = records.where((r) => r.ledger == name).toList();
+    // 逐条删除记录
+    for (final record in ledgerRecords) {
+      await _deleteRecordBackend(record.id);
+    }
     await _httpDelete('/api/v1/ledgers/$name');
   }
 
@@ -1256,6 +1269,11 @@ class ApiService {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
+      // 先删除该账本下的所有记录
+      await conn.query(
+        'DELETE FROM records WHERE ledger = ?',
+        [name],
+      );
       await conn.query('DELETE FROM ledgers WHERE name = ?', [name]);
     } finally {
       await conn.close();
@@ -1523,8 +1541,15 @@ class ApiService {
   // ==================== 图片上传 ====================
 
   static Future<String> uploadImage(File imageFile) async {
-    // 暂时返回空，后续可以实现实际上传逻辑
-    return '';
+    final bytes = await imageFile.readAsBytes();
+    final base64Str = base64Encode(bytes);
+    final ext = imageFile.path.split('.').last.toLowerCase();
+    final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+    final dataUrl = 'data:$mime;base64,$base64Str';
+    if (dataUrl.length > 60000) {
+      throw Exception('图片过大，请选择更小的图片（建议小于 40KB）');
+    }
+    return dataUrl;
   }
 
   // ==================== 辅助方法 ====================

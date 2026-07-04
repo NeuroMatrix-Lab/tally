@@ -1,5 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:excel/excel.dart' as xlsx;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/record.dart';
 import '../models/staff.dart';
 import '../widgets/custom_date_picker.dart';
@@ -38,10 +42,56 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
   String _searchKeyword = '';
   bool _showFilters = false;
 
+  Future<void> _exportLedgerToExcel(String? ledger) async {
+    final records = ledger == null
+        ? widget.records
+        : widget.records.where((r) => r.ledger == ledger).toList();
+
+    if (records.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('该账本没有记录')),
+        );
+      }
+      return;
+    }
+
+    final excel = xlsx.Excel.createExcel();
+    final sheetName = ledger ?? '全部账本';
+    final sheet = excel[sheetName];
+    excel.delete('Sheet1');
+
+    sheet.appendRow([
+      xlsx.TextCellValue('日期'),
+      xlsx.TextCellValue('类别'),
+      xlsx.TextCellValue('工作内容'),
+      xlsx.TextCellValue('金额'),
+      xlsx.TextCellValue('账本'),
+    ]);
+
+    for (final r in records) {
+      sheet.appendRow([
+        xlsx.TextCellValue(DateFormat('yyyy-MM-dd').format(r.date)),
+        xlsx.TextCellValue(r.category),
+        xlsx.TextCellValue(r.workContent),
+        xlsx.DoubleCellValue(r.amount),
+        xlsx.TextCellValue(r.ledger),
+      ]);
+    }
+
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/$sheetName.xlsx');
+    await file.writeAsBytes(excel.encode()!);
+    await Share.shareXFiles(
+      [XFile(file.path)],
+      text: '$sheetName 导出',
+    );
+  }
+
   @override
   void initState() {
     super.initState();
-    _selectedLedger = widget.defaultLedger;
+    _selectedLedger = null;
   }
 
   // 按日期分组记录
@@ -656,12 +706,24 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                   if (index == 0) {
                     return ListTile(
                       title: const Text('全部账本'),
-                      trailing: _selectedLedger == null
-                          ? Icon(
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.download, size: 20),
+                            tooltip: '导出Excel',
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _exportLedgerToExcel(null);
+                            },
+                          ),
+                          if (_selectedLedger == null)
+                            Icon(
                               Icons.check,
                               color: Theme.of(context).colorScheme.primary,
-                            )
-                          : null,
+                            ),
+                        ],
+                      ),
                       onTap: () {
                         setState(() {
                           _selectedLedger = null;
@@ -674,12 +736,24 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                   final ledger = widget.ledgers[index - 1];
                   return ListTile(
                     title: Text(ledger),
-                    trailing: _selectedLedger == ledger
-                        ? Icon(
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.download, size: 20),
+                          tooltip: '导出Excel',
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _exportLedgerToExcel(ledger);
+                          },
+                        ),
+                        if (_selectedLedger == ledger)
+                          Icon(
                             Icons.check,
                             color: Theme.of(context).colorScheme.primary,
-                          )
-                        : null,
+                          ),
+                      ],
+                    ),
                     onTap: () {
                       setState(() {
                         _selectedLedger = ledger;

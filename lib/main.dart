@@ -247,28 +247,12 @@ class _HomePageState extends State<HomePage> {
         print('Error loading records from server: $e');
         setState(() {
           _isServerConnected = false;
+          _records = [];
         });
-        final recordsJson = prefs.getString('records');
-        if (recordsJson != null) {
-          final List<dynamic> decoded = json.decode(recordsJson);
-          setState(() {
-            _records = decoded.map((item) => Record.fromMap(item)).toList();
-          });
-        }
       }
 
       try {
         final ledgers = await ApiService.syncLedgers();
-        final ledgersJson = prefs.getString('ledgers');
-        if (ledgersJson != null) {
-          final List<dynamic> decoded = json.decode(ledgersJson);
-          final localLedgers = decoded.map((item) => item.toString()).toList();
-          for (final ledger in localLedgers) {
-            if (!ledgers.contains(ledger)) {
-              ledgers.add(ledger);
-            }
-          }
-        }
         setState(() {
           _ledgers.clear();
           _ledgers.addAll(ledgers);
@@ -278,14 +262,6 @@ class _HomePageState extends State<HomePage> {
         });
       } catch (e) {
         print('Error syncing ledgers from server: $e');
-        final ledgersJson = prefs.getString('ledgers');
-        if (ledgersJson != null) {
-          final List<dynamic> decoded = json.decode(ledgersJson);
-          setState(() {
-            _ledgers.clear();
-            _ledgers.addAll(decoded.map((item) => item.toString()));
-          });
-        }
       }
 
       try {
@@ -295,15 +271,9 @@ class _HomePageState extends State<HomePage> {
         });
       } catch (e) {
         print('Error loading deleted records from server: $e');
-        final deletedRecordsJson = prefs.getString('deletedRecords');
-        if (deletedRecordsJson != null) {
-          final List<dynamic> decoded = json.decode(deletedRecordsJson);
-          setState(() {
-            _deletedRecords = decoded
-                .map((item) => Record.fromMap(item))
-                .toList();
-          });
-        }
+        setState(() {
+          _deletedRecords = [];
+        });
       }
 
       final operationLogsJson = prefs.getString('operationLogs');

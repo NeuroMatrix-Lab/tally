@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../widgets/custom_date_picker.dart';
@@ -74,12 +75,20 @@ class _AddRecordPageState extends State<AddRecordPage> {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: source,
-        imageQuality: 80,
+        imageQuality: 100,
       );
 
       if (pickedFile != null && mounted) {
+        final file = File(pickedFile.path);
+        final compressed = await FlutterImageCompress.compressAndGetFile(
+          file.path,
+          '${file.parent.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          quality: 30,
+          minWidth: 800,
+          minHeight: 800,
+        );
         setState(() {
-          _selectedImage = File(pickedFile.path);
+          _selectedImage = compressed != null ? File(compressed.path) : file;
         });
       }
     } catch (e) {
@@ -336,14 +345,12 @@ class _AddRecordPageState extends State<AddRecordPage> {
     required String hint,
     required TextEditingController controller,
     required List<String> options,
-    required Function(String) onSelected,
   }) {
     return _CustomAutocomplete(
       label: label,
       hint: hint,
       controller: controller,
       options: options,
-      onSelected: onSelected,
     );
   }
 
@@ -395,12 +402,6 @@ class _AddRecordPageState extends State<AddRecordPage> {
               hint: '输入或选择类别',
               controller: _categoryController,
               options: widget.categories,
-              onSelected: (selection) {
-                _categoryController.text = selection;
-                _categoryController.selection = TextSelection.fromPosition(
-                  TextPosition(offset: selection.length),
-                );
-              },
             ),
             const SizedBox(height: 16),
             _buildAutocompleteField(
@@ -408,12 +409,6 @@ class _AddRecordPageState extends State<AddRecordPage> {
               hint: '输入或选择工作内容',
               controller: _workContentController,
               options: widget.workContents,
-              onSelected: (selection) {
-                _workContentController.text = selection;
-                _workContentController.selection = TextSelection.fromPosition(
-                  TextPosition(offset: selection.length),
-                );
-              },
             ),
             const SizedBox(height: 16),
             GestureDetector(
@@ -559,14 +554,12 @@ class _CustomAutocomplete extends StatefulWidget {
   final String hint;
   final TextEditingController controller;
   final List<String> options;
-  final Function(String) onSelected;
 
   const _CustomAutocomplete({
     required this.label,
     required this.hint,
     required this.controller,
     required this.options,
-    required this.onSelected,
   });
 
   @override
@@ -574,99 +567,48 @@ class _CustomAutocomplete extends StatefulWidget {
 }
 
 class _CustomAutocompleteState extends State<_CustomAutocomplete> {
-  final LayerLink _layerLink = LayerLink();
-  OverlayEntry? _overlayEntry;
-  final GlobalKey _textFieldKey = GlobalKey();
-  final FocusNode _focusNode = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    _focusNode.addListener(_onFocusChange);
-  }
-
-  void _onFocusChange() {
-    if (_focusNode.hasFocus && widget.options.isNotEmpty) {
-      _showOverlay();
-    } else {
-      _hideOverlay();
-    }
-  }
-
-  void _showOverlay() {
-    if (_overlayEntry != null) return;
-
-    final renderBox =
-        _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-
-    final size = renderBox.size;
-    final position = renderBox.localToGlobal(Offset.zero);
-
-    _overlayEntry = OverlayEntry(
-      builder: (context) => Stack(
-        children: [
-          GestureDetector(
-            onTap: _hideOverlay,
-            behavior: HitTestBehavior.translucent,
-            child: Container(color: Colors.transparent),
-          ),
-          Positioned(
-            top: position.dy + size.height + 8,
-            left: position.dx,
-            width: size.width,
-            child: Material(
-              elevation: 4.0,
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                constraints: const BoxConstraints(maxHeight: 200),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: widget.options.length,
-                  itemBuilder: (context, index) {
-                    final option = widget.options[index];
-                    return InkWell(
-                      onTap: () {
-                        widget.onSelected(option);
-                        _hideOverlay();
-                        _focusNode.unfocus();
-                      },
-                      child: ListTile(title: Text(option)),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    Overlay.of(context).insert(_overlayEntry!);
-  }
-
-  void _hideOverlay() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
-  }
+  TextEditingController? _internalController;
 
   @override
   void dispose() {
-    _hideOverlay();
-    _focusNode.removeListener(_onFocusChange);
-    _focusNode.dispose();
+    _internalController?.removeListener(_syncToParent);
     super.dispose();
+  }
+
+  void _syncToParent() {
+    if (_internalController != null) {
+      widget.controller.text = _internalController!.text;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return CompositedTransformTarget(
-      link: _layerLink,
-      child: Container(
-        key: _textFieldKey,
-        child: TextField(
-          controller: widget.controller,
-          focusNode: _focusNode,
+    return Autocomplete<String>(
+      optionsBuilder: (TextEditingValue textEditingValue) {
+        if (textEditingValue.text.isEmpty) {
+          return widget.options;
+        }
+        return widget.options.where((o) => o.contains(textEditingValue.text));
+      },
+      onSelected: (String selection) {
+        widget.controller.text = selection;
+        widget.controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: selection.length),
+        );
+      },
+      fieldViewBuilder: (context, textEditingController, focusNode, onSubmitted) {
+        if (_internalController != textEditingController) {
+          _internalController?.removeListener(_syncToParent);
+          _internalController = textEditingController;
+          _internalController!.addListener(_syncToParent);
+          if (widget.controller.text.isNotEmpty) {
+            textEditingController.text = widget.controller.text;
+            textEditingController.selection = widget.controller.selection;
+          }
+        }
+        return TextField(
+          controller: textEditingController,
+          focusNode: focusNode,
           decoration: InputDecoration(
             labelText: widget.label,
             border: const OutlineInputBorder(),
@@ -675,16 +617,10 @@ class _CustomAutocompleteState extends State<_CustomAutocomplete> {
                 ? null
                 : const Icon(Icons.arrow_drop_down),
           ),
-          onTap: () {
-            if (widget.options.isNotEmpty) {
-              _showOverlay();
-            }
-          },
-          onChanged: (value) {
-            _hideOverlay();
-          },
-        ),
-      ),
+          onSubmitted: (_) => onSubmitted(),
+        );
+      },
     );
   }
 }
+
