@@ -1,7 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 
-const String baseUrl = 'http://127.0.0.1:7378';
+String get baseUrl {
+  final envUrl = Platform.environment['API_BASE_URL'];
+  if (envUrl != null && envUrl.trim().isNotEmpty) {
+    return envUrl.trim().replaceAll(RegExp(r'/\s*$'), '');
+  }
+  return 'http://127.0.0.1:7378';
+}
 
 void main() async {
   print('🧪 后端 API 测试脚本');
@@ -72,7 +79,7 @@ Future<void> testCreateRecord() async {
   try {
     final testRecord = {
       'id': 'test-${DateTime.now().millisecondsSinceEpoch}',
-      'date': DateTime.now().toIso8601String(),
+      'date': DateTime.now().toUtc().toIso8601String(),
       'category': '测试类别',
       'workContent': '测试工作内容',
       'amount': 100.50,
