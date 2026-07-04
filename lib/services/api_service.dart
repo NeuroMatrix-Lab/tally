@@ -621,8 +621,8 @@ class ApiService {
     String? ledger,
   ) async {
     final data = await _httpPost('/api/v1/records/search', {
-      'startDate': startDate.toIso8601String(),
-      'endDate': endDate.toIso8601String(),
+      'startDate': startDate.toLocal().toIso8601String(),
+      'endDate': endDate.toLocal().toIso8601String(),
       'category': category,
       'ledger': ledger,
     });
@@ -696,7 +696,7 @@ class ApiService {
   static Future<Record> _createRecordBackend(Record record) async {
     final data = await _httpPost('/api/v1/records', {
       'id': record.id,
-      'date': record.date.toIso8601String(),
+      'date': record.date.toLocal().toIso8601String(),
       'category': record.category,
       'workContent': record.workContent,
       'amount': record.amount,
@@ -771,7 +771,7 @@ class ApiService {
 
   static Future<Record> _updateRecordBackend(Record record) async {
     final data = await _httpPut('/api/v1/records/${record.id}', {
-      'date': record.date.toIso8601String(),
+      'date': record.date.toLocal().toIso8601String(),
       'category': record.category,
       'workContent': record.workContent,
       'amount': record.amount,
