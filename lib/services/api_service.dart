@@ -249,6 +249,7 @@ class ApiService {
 
   static void _handleWebSocketMessage(dynamic data) {
     try {
+      if (data == null || data.toString().isEmpty) return;
       final message = json.decode(data);
       final entityType = message['entity_type'];
       final eventType = message['event_type'];
