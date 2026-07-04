@@ -16,6 +16,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   ConnectionMode _selectedMode = ConnectionMode.local;
   bool _isLoading = false;
+  String _backendProtocol = 'https'; // 'http' or 'https'
 
   // 后端服务模式配置
   final TextEditingController _backendIpController = TextEditingController();
@@ -37,10 +38,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final modeIndex = prefs.getInt('connectionMode') ?? 0;
+    final savedPort = prefs.getString('backendPort') ?? '443';
+    final protocol = savedPort == '7378' ? 'http' : 'https';
     setState(() {
       _selectedMode = ConnectionMode.values[modeIndex];
+      _backendProtocol = protocol;
       _backendIpController.text = prefs.getString('backendIp') ?? '';
-      _backendPortController.text = prefs.getString('backendPort') ?? '7378';
+      _backendPortController.text = savedPort;
       _dbHostController.text = prefs.getString('dbHost') ?? '';
       _dbPortController.text = prefs.getString('dbPort') ?? '3306';
       _dbUserController.text = prefs.getString('dbUser') ?? '';
@@ -140,8 +144,8 @@ class _SettingsPageState extends State<SettingsPage> {
         final port = _backendPortController.text.trim();
 
         try {
-          final scheme = port == '443' ? 'https' : 'http';
-          final defaultPort = port == '443' ? '' : ':$port';
+          final scheme = _backendProtocol;
+          final defaultPort = (scheme == 'https' && port == '443') || (scheme == 'http' && port == '80') ? '' : ':$port';
           final response = await http
               .get(Uri.parse('$scheme://$ip$defaultPort/api/v1/health'))
               .timeout(const Duration(seconds: 10));
@@ -341,22 +345,53 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: _backendIpController,
-              decoration: const InputDecoration(
-                labelText: '服务器地址',
-                hintText: '例如: 192.168.1.100',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.computer),
-              ),
-              keyboardType: TextInputType.text,
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: DropdownButtonFormField<String>(
+                    value: _backendProtocol,
+                    decoration: const InputDecoration(
+                      labelText: '协议',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.security),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'https', child: Text('HTTPS')),
+                      DropdownMenuItem(value: 'http', child: Text('HTTP')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          _backendProtocol = value;
+                          _backendPortController.text = value == 'https' ? '443' : '7378';
+                        });
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: _backendIpController,
+                    decoration: const InputDecoration(
+                      labelText: '服务器地址',
+                      hintText: '例如: tally.luminous-dev.icu',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.computer),
+                    ),
+                    keyboardType: TextInputType.text,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _backendPortController,
               decoration: const InputDecoration(
                 labelText: '端口',
-                hintText: '例如: 8080',
+                hintText: '例如: 443',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.settings_ethernet),
               ),
