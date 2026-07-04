@@ -150,60 +150,8 @@ jobs:
           path: build/windows/tally-*.zip
           if-no-files-found: error
 
-  build-macos:
-    runs-on: macos-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set Version
-        id: set_version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.tag_name }}"
-          else
-            VERSION="${{ github.ref_name }}"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Using version: $VERSION"
-      
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.41.5'
-          channel: 'stable'
-      
-      - name: Install dependencies
-        run: flutter pub get
-      
-      - name: Build macOS Release
-        run: flutter build macos --release
-      
-      - name: List macOS build outputs
-        run: find build/macos/Build/Products/Release -type f
-      
-      - name: Create macOS DMG
-        run: |
-          version="${{ steps.set_version.outputs.version }}"
-          echo "Using version: $version"
-          app_path="build/macos/Build/Products/Release/tally.app"
-          dmg_path="build/macos/tally-${version}-macos.dmg"
-          echo "Creating DMG: $dmg_path"
-          hdiutil create -srcfolder "$app_path" -volname "Tally" -fs HFS+ -format UDZO "$dmg_path"
-      
-      - name: List macOS DMG file
-        run: ls -la build/macos/tally-*.dmg
-      
-      - name: Upload macOS Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-builds
-          path: build/macos/tally-*.dmg
-          if-no-files-found: error
-
   release:
-    needs: [build-android, build-windows, build-macos]
+    needs: [build-android, build-windows]
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -225,7 +173,6 @@ jobs:
         run: |
           mkdir -p builds/android
           mkdir -p builds/windows
-          mkdir -p builds/macos
       
       - name: Download Android Artifacts
         uses: actions/download-artifact@v4
@@ -239,28 +186,12 @@ jobs:
           name: windows-builds
           path: builds/windows
       
-      - name: Download macOS Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-builds
-          path: builds/macos
-      
       - name: List all downloaded files
         run: |
           echo "=== Android files ==="
           find builds/android -type f -ls
           echo "=== Windows files ==="
           find builds/windows -type f -ls
-          echo "=== macOS files ==="
-          find builds/macos -type f -ls
-      
-      - name: Verify Android files exist
-        run: |
-          if [ -z "$(find builds/android -name '*.apk' -o -name '*.aab')" ]; then
-            echo "ERROR: No Android files found!"
-            exit 1
-          fi
-          echo "Android files verified successfully"
       
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -272,7 +203,6 @@ jobs:
           files: |
             builds/android/**
             builds/windows/**
-            builds/macos/**
           body: |
             ## What's Changed
             - Automatic build and release
@@ -280,10 +210,3 @@ jobs:
             ## Builds
             - Android: APK and AppBundle
             - Windows: Zip archive
-            - macOS: DMG installer
-
-      - name: Verify release assets
-        run: |
-          echo "=== Persisted artifacts in build directory ==="
-          find builds -type f -maxdepth 4
-          echo "Release step done"
