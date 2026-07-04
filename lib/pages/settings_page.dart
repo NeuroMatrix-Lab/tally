@@ -120,6 +120,22 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _saveSettingsQuietly() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('connectionMode', _selectedMode.index);
+      await prefs.setString('backendIp', _backendIpController.text.trim());
+      await prefs.setString('backendPort', _backendPortController.text.trim());
+      await prefs.setString('dbHost', _dbHostController.text.trim());
+      await prefs.setString('dbPort', _dbPortController.text.trim());
+      await prefs.setString('dbUser', _dbUserController.text.trim());
+      await prefs.setString('dbPassword', _dbPasswordController.text.trim());
+      await prefs.setString('dbName', _dbNameController.text.trim());
+    } catch (e) {
+      print('Auto-save settings failed: $e');
+    }
+  }
+
   Future<void> _testConnection() async {
     setState(() {
       _isLoading = true;
@@ -202,6 +218,9 @@ class _SettingsPageState extends State<SettingsPage> {
             duration: const Duration(seconds: 3),
           ),
         );
+        if (success) {
+          await _saveSettingsQuietly();
+        }
       }
     } catch (e) {
       if (mounted) {
