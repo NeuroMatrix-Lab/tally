@@ -1,13 +1,11 @@
 class Staff {
   final String id;
   final String name;
-  final bool isActive;
   final DateTime? updatedAt;
 
   Staff({
     required this.id,
     required this.name,
-    this.isActive = true,
     this.updatedAt,
   });
 
@@ -15,7 +13,6 @@ class Staff {
     return {
       'id': id,
       'name': name,
-      'isActive': isActive,
       'updatedAt': updatedAt?.toIso8601String(),
     };
   }
@@ -33,7 +30,6 @@ class Staff {
     return Staff(
       id: map['id']?.toString() ?? '',
       name: map['name'] ?? '',
-      isActive: map['isActive'] ?? true,
       updatedAt: updatedAt,
     );
   }
@@ -41,13 +37,11 @@ class Staff {
   Staff copyWith({
     String? id,
     String? name,
-    bool? isActive,
     DateTime? updatedAt,
   }) {
     return Staff(
       id: id ?? this.id,
       name: name ?? this.name,
-      isActive: isActive ?? this.isActive,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }

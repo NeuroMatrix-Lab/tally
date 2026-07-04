@@ -22,6 +22,66 @@ use tracing_subscriber::FmtSubscriber;
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::broadcast;
 
+#[derive(Debug, Deserialize)]
+struct Config {
+    server: ServerConfig,
+    database: DatabaseConfig,
+}
+
+#[derive(Debug, Deserialize)]
+struct ServerConfig {
+    port: u16,
+}
+
+#[derive(Debug, Deserialize)]
+struct DatabaseConfig {
+    host: String,
+    port: u16,
+    user: String,
+    password: String,
+    name: String,
+}
+
+impl Config {
+    fn load() -> Self {
+        let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
+        
+        match std::fs::read_to_string(&config_path) {
+            Ok(content) => {
+                toml::from_str(&content).expect(&format!("Failed to parse config file: {}", config_path))
+            }
+            Err(_) => {
+                info!("Config file not found, falling back to environment variables");
+                Config {
+                    server: ServerConfig {
+                        port: std::env::var("PORT")
+                            .unwrap_or_else(|_| "7378".to_string())
+                            .parse()
+                            .expect("PORT must be a number"),
+                    },
+                    database: DatabaseConfig {
+                        host: std::env::var("DB_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
+                        port: std::env::var("DB_PORT")
+                            .unwrap_or_else(|_| "3306".to_string())
+                            .parse()
+                            .expect("DB_PORT must be a number"),
+                        user: std::env::var("DB_USER").expect("DB_USER must be set"),
+                        password: std::env::var("DB_PASSWORD").unwrap_or_default(),
+                        name: std::env::var("DB_NAME").expect("DB_NAME must be set"),
+                    },
+                }
+            }
+        }
+    }
+
+    fn database_url(&self) -> String {
+        format!(
+            "mysql://{}:{}@{}:{}/{}",
+            self.database.user, self.database.password, self.database.host, self.database.port, self.database.name
+        )
+    }
+}
+
 #[derive(Clone)]
 struct AppState {
     db: MySqlPool,
@@ -136,7 +196,7 @@ struct IncrementalSyncResponse {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let _subscriber = FmtSubscriber::builder()
+    FmtSubscriber::builder()
         .with_max_level(Level::INFO)
         .with_target(false)
         .with_thread_ids(true)
@@ -145,12 +205,11 @@ async fn main() -> Result<()> {
         .json()
         .init();
 
+    let config = Config::load();
     info!("Starting Tally Server with WebSocket Sync...");
 
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set. Example: mysql://user:***@host:3306/tally");
-
-    println!("Connecting to database...");
+    let database_url = config.database_url();
+    println!("Connecting to database at {}:{}/{}...", config.database.host, config.database.port, config.database.name);
 
     let pool = MySqlPoolOptions::new()
         .max_connections(5)
@@ -203,8 +262,7 @@ async fn main() -> Result<()> {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let port = std::env::var("PORT").unwrap_or_else(|_| "7378".to_string());
-    let addr = format!("0.0.0.0:{}", port);
+    let addr = format!("0.0.0.0:{}", config.server.port);
 
     info!("Server listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
