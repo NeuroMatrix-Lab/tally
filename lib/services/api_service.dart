@@ -44,7 +44,9 @@ class ApiService {
       throw Exception('后端服务端口无效，请输入 1-65535 之间的端口');
     }
 
-    return 'http://$host:$port';
+    final scheme = port == 443 ? 'https' : 'http';
+    final defaultPort = port == 443 ? '' : ':$port';
+    return '$scheme://$host$defaultPort';
   }
 
   static Future<String> _getWebSocketUrl() async {
@@ -61,7 +63,9 @@ class ApiService {
       throw Exception('后端服务端口无效，请输入 1-65535 之间的端口');
     }
 
-    return 'ws://$host:$port/api/v1/ws';
+    final scheme = port == 443 ? 'wss' : 'ws';
+    final defaultPort = port == 443 ? '' : ':$port';
+    return '$scheme://$host$defaultPort/api/v1/ws';
   }
 
   static Future<void> _validateBackendConfig() async {
