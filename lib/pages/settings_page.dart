@@ -140,8 +140,10 @@ class _SettingsPageState extends State<SettingsPage> {
         final port = _backendPortController.text.trim();
 
         try {
+          final scheme = port == '443' ? 'https' : 'http';
+          final defaultPort = port == '443' ? '' : ':$port';
           final response = await http
-              .get(Uri.parse('http://$ip:$port/health'))
+              .get(Uri.parse('$scheme://$ip$defaultPort/api/v1/health'))
               .timeout(const Duration(seconds: 10));
 
           if (response.statusCode == 200) {
