@@ -203,7 +203,17 @@ class ApiService {
       await disconnectWebSocket();
 
       final wsUrl = await _getWebSocketUrl();
-      _webSocket = await WebSocket.connect(wsUrl);
+      print('WebSocket connecting to: $wsUrl');
+      
+      // Windows 上使用自定义 SecurityContext 解决 SSL 问题
+      final securityContext = SecurityContext();
+      final httpClient = HttpClient(context: securityContext);
+      httpClient.badCertificateCallback = (cert, host, port) => true;
+      
+      _webSocket = await WebSocket.connect(
+        wsUrl,
+        customClient: httpClient,
+      );
       
       _webSocketSubscription = _webSocket?.listen(
         (data) => _handleWebSocketMessage(data),
