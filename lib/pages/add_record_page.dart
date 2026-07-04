@@ -595,6 +595,10 @@ class _CustomAutocompleteState extends State<_CustomAutocomplete> {
         widget.controller.selection = TextSelection.fromPosition(
           TextPosition(offset: selection.length),
         );
+        if (_internalController != null) {
+          _internalController!.text = selection;
+          _internalController!.selection = widget.controller.selection;
+        }
       },
       fieldViewBuilder: (context, textEditingController, focusNode, onSubmitted) {
         if (_internalController != textEditingController) {
