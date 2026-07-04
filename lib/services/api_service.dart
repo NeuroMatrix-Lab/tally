@@ -384,6 +384,8 @@ class ApiService {
       throw Exception('请求超时，请检查后端服务是否可访问');
     } on SocketException catch (e) {
       throw Exception('网络异常：$e');
+    } catch (e) {
+      throw Exception('请求失败：$e');
     }
   }
 
@@ -411,6 +413,8 @@ class ApiService {
       throw Exception('请求超时，请检查后端服务是否可访问');
     } on SocketException catch (e) {
       throw Exception('网络异常：$e');
+    } catch (e) {
+      throw Exception('请求失败：$e');
     }
   }
 
@@ -438,6 +442,8 @@ class ApiService {
       throw Exception('请求超时，请检查后端服务是否可访问');
     } on SocketException catch (e) {
       throw Exception('网络异常：$e');
+    } catch (e) {
+      throw Exception('请求失败：$e');
     }
   }
 
@@ -458,6 +464,8 @@ class ApiService {
       throw Exception('请求超时，请检查后端服务是否可访问');
     } on SocketException catch (e) {
       throw Exception('网络异常：$e');
+    } catch (e) {
+      throw Exception('请求失败：$e');
     }
   }
 

@@ -381,6 +381,15 @@ class _HomePageState extends State<HomePage> {
       await ApiService.createRecord(newRecord);
     } catch (e) {
       print('Error creating record on server: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('上传失败: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -404,6 +413,14 @@ class _HomePageState extends State<HomePage> {
       await ApiService.deleteRecord(record.id);
     } catch (e) {
       print('Error deleting record on server: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('删除同步失败: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 
