@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'models/record.dart';
 import 'models/operation_log.dart';
 import 'models/staff.dart';
@@ -14,6 +16,12 @@ import 'services/api_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 桌面平台初始化 sqflite_ffi
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
