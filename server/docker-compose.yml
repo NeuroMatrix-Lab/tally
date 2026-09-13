@@ -1,0 +1,40 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: tally-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-tally}
+      MYSQL_USER: ${DB_USER:-tally_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-change-this-password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-this-root-password}
+    volumes:
+      - tally-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tally-server:local
+    container_name: tally-server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: ${PORT:-7378}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-tally_user}
+      DB_PASSWORD: ${DB_PASSWORD:-change-this-password}
+      DB_NAME: ${DB_NAME:-tally}
+    ports:
+      - "${PORT:-7378}:7378"
+
+volumes:
+  tally-db-data:

@@ -1,9 +1,12 @@
+# 默认配置；运行时可通过环境变量覆盖
+# 例如：DB_HOST=localhost DB_PORT=3306 cargo run
+
 [server]
 port = 7378
 
 [database]
 host = "127.0.0.1"
 port = 3306
-user = "YOUR_USER"
-password = "YOUR_PASSWORD"
-name = "YOUR_DB"
+user = "tally_user"
+password = "tally_password"
+name = "tally"

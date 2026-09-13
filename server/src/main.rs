@@ -42,42 +42,76 @@ struct DatabaseConfig {
     name: String,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            server: ServerConfig { port: 7378 },
+            database: DatabaseConfig {
+                host: "127.0.0.1".to_string(),
+                port: 3306,
+                user: "tally_user".to_string(),
+                password: "tally_password".to_string(),
+                name: "tally".to_string(),
+            },
+        }
+    }
+}
+
 impl Config {
     fn load() -> Self {
         let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
-        
-        match std::fs::read_to_string(&config_path) {
-            Ok(content) => {
-                toml::from_str(&content).expect(&format!("Failed to parse config file: {}", config_path))
-            }
-            Err(_) => {
-                info!("Config file not found, falling back to environment variables");
-                Config {
-                    server: ServerConfig {
-                        port: std::env::var("PORT")
-                            .unwrap_or_else(|_| "7378".to_string())
-                            .parse()
-                            .expect("PORT must be a number"),
-                    },
-                    database: DatabaseConfig {
-                        host: std::env::var("DB_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
-                        port: std::env::var("DB_PORT")
-                            .unwrap_or_else(|_| "3306".to_string())
-                            .parse()
-                            .expect("DB_PORT must be a number"),
-                        user: std::env::var("DB_USER").expect("DB_USER must be set"),
-                        password: std::env::var("DB_PASSWORD").unwrap_or_default(),
-                        name: std::env::var("DB_NAME").expect("DB_NAME must be set"),
-                    },
+
+        let mut config = match std::fs::read_to_string(&config_path) {
+            Ok(content) => match toml::from_str(&content) {
+                Ok(parsed) => {
+                    println!("[debug] loaded cfg from {}", config_path);
+                    parsed
                 }
+                Err(err) => {
+                    eprintln!("[debug] failed to parse config file {}: {}. falling back to defaults", config_path, err);
+                    Config::default()
+                }
+            },
+            Err(err) => {
+                eprintln!("[debug] config file {} not found: {}. falling back to environment/defaults", config_path, err);
+                Config::default()
             }
-        }
+        };
+
+        config.server.port = std::env::var("PORT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(config.server.port);
+
+        config.database.host = std::env::var("DB_HOST").unwrap_or(config.database.host);
+        config.database.port = std::env::var("DB_PORT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(config.database.port);
+        config.database.user = std::env::var("DB_USER").unwrap_or(config.database.user);
+        config.database.password = std::env::var("DB_PASSWORD").unwrap_or(config.database.password);
+        config.database.name = std::env::var("DB_NAME").unwrap_or(config.database.name);
+
+        println!(
+            "[debug] final config: server_port={}, db_host={}, db_port={}, db_user={}, db_name={}",
+            config.server.port,
+            config.database.host,
+            config.database.port,
+            config.database.user,
+            config.database.name,
+        );
+
+        config
     }
 
     fn database_url(&self) -> String {
         format!(
             "mysql://{}:{}@{}:{}/{}",
-            self.database.user, self.database.password, self.database.host, self.database.port, self.database.name
+            self.database.user,
+            self.database.password,
+            self.database.host,
+            self.database.port,
+            self.database.name,
         )
     }
 }
@@ -207,9 +241,11 @@ async fn main() -> Result<()> {
 
     let config = Config::load();
     info!("Starting Tally Server with WebSocket Sync...");
+    println!("[debug] starting tally server on port {}", config.server.port);
 
     let database_url = config.database_url();
-    println!("Connecting to database at {}:{}/{}...", config.database.host, config.database.port, config.database.name);
+    println!("[debug] connecting to database at {}:{}/{}...", config.database.host, config.database.port, config.database.name);
+    println!("[debug] database_url={}", database_url);
 
     let pool = MySqlPoolOptions::new()
         .max_connections(5)
@@ -221,6 +257,7 @@ async fn main() -> Result<()> {
     init_database(&pool).await?;
 
     let (tx, _rx) = broadcast::channel(100);
+    println!("[debug] websocket broadcast channel initialized");
 
     let state = Arc::new(AppState {
         db: pool,
@@ -265,6 +302,7 @@ async fn main() -> Result<()> {
     let addr = format!("0.0.0.0:{}", config.server.port);
 
     info!("Server listening on {}", addr);
+    println!("[debug] bind address={}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
     axum::serve(listener, app).await?;
@@ -441,6 +479,8 @@ async fn incremental_sync(
     State(state): State<Arc<AppState>>,
     Json(req): Json<IncrementalSyncRequest>,
 ) -> Result<Json<IncrementalSyncResponse>, StatusCode> {
+    println!("[debug] incremental_sync request received: last_sync_time={:?}", req.last_sync_time);
+
     let last_sync_time = req.last_sync_time
         .and_then(|t| DateTime::parse_from_rfc3339(&t).ok())
         .map(|dt| dt.with_timezone(&Utc));
@@ -482,8 +522,15 @@ async fn incremental_sync(
     };
 
     let staff = get_all_staff_from_db(&state.db, last_sync_time).await?;
-    
+
     let ledgers = get_all_ledgers_from_db(&state.db).await?;
+
+    println!("[debug] incremental_sync summary: records={}, staff={}, ledgers={}, deleted_records={}",
+        records.len(),
+        staff.len(),
+        ledgers.len(),
+        deleted_record_ids.len(),
+    );
 
     let deleted_staff_ids = if let Some(since) = last_sync_time {
         let rows = sqlx::query("SELECT id FROM staff WHERE deleted_at > ? AND deleted_at IS NOT NULL")
@@ -496,14 +543,17 @@ async fn incremental_sync(
         Vec::new()
     };
 
-    Ok(Json(IncrementalSyncResponse {
+    let response = IncrementalSyncResponse {
         records,
         staff,
         ledgers,
         deleted_record_ids,
         deleted_staff_ids,
         server_time: server_time.to_rfc3339(),
-    }))
+    };
+
+    println!("[debug] incremental_sync response ready: server_time={}", response.server_time);
+    Ok(Json(response))
 }
 
 async fn get_all_records(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Record>>, StatusCode> {
@@ -633,6 +683,8 @@ async fn create_record(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateRecordRequest>,
 ) -> Result<Json<Record>, StatusCode> {
+    println!("[debug] create_record: id={}, category={}, amount={}, ledger={}", req.id, req.category, req.amount, req.ledger);
+
     let date = DateTime::parse_from_rfc3339(&req.date)
         .map_err(|_| StatusCode::BAD_REQUEST)?
         .with_timezone(&Utc);
@@ -672,7 +724,8 @@ async fn create_record(
         deleted_at: None,
     };
 
-    broadcast_sync_event(&state, "record", "created", Some(req.id));
+    broadcast_sync_event(&state, "record", "created", Some(req.id.clone()));
+    println!("[debug] record created successfully: id={}", req.id);
 
     Ok(Json(record))
 }
@@ -722,7 +775,8 @@ async fn update_record(
         deleted_at: None,
     };
 
-    broadcast_sync_event(&state, "record", "updated", Some(id));
+    broadcast_sync_event(&state, "record", "updated", Some(id.clone()));
+    println!("[debug] record updated successfully: id={}", id);
 
     Ok(Json(record))
 }
@@ -731,6 +785,8 @@ async fn delete_record(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
+    println!("[debug] delete_record requested: id={}", id);
+
     let result = sqlx::query("UPDATE records SET deleted_at = NOW() WHERE record_id = ? AND deleted_at IS NULL")
         .bind(&id)
         .execute(&state.db)
@@ -741,7 +797,8 @@ async fn delete_record(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    broadcast_sync_event(&state, "record", "deleted", Some(id));
+    broadcast_sync_event(&state, "record", "deleted", Some(id.clone()));
+    println!("[debug] record deleted: id={}", id);
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -768,6 +825,8 @@ async fn restore_record(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
+    println!("[debug] restore_record requested: id={}", id);
+
     let result = sqlx::query("UPDATE records SET deleted_at = NULL WHERE record_id = ? AND deleted_at IS NOT NULL")
         .bind(&id)
         .execute(&state.db)
@@ -778,7 +837,8 @@ async fn restore_record(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    broadcast_sync_event(&state, "record", "restored", Some(id));
+    broadcast_sync_event(&state, "record", "restored", Some(id.clone()));
+    println!("[debug] record restored: id={}", id);
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -787,6 +847,8 @@ async fn permanently_delete_record(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
+    println!("[debug] permanently_delete_record requested: id={}", id);
+
     let result = sqlx::query("DELETE FROM records WHERE record_id = ? AND deleted_at IS NOT NULL")
         .bind(&id)
         .execute(&state.db)
@@ -797,6 +859,7 @@ async fn permanently_delete_record(
         return Err(StatusCode::NOT_FOUND);
     }
 
+    println!("[debug] permanent record deletion complete: id={}", id);
     Ok(StatusCode::NO_CONTENT)
 }
 

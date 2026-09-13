@@ -24,6 +24,7 @@ Flutter 前端 + Rust 后端，支持多设备同步。
 下载对应平台的安装包：
 - Android — APK 或 AAB（应用商店）
 - Windows — ZIP 解压即用
+- Linux 后端 — RPM 包，安装后可使用 systemd 运行
 
 
 ## 自己部署后端
@@ -101,7 +102,7 @@ GET    /categories                类别
 
 ## CI
 
-推 tag `v*.*.*` 或手动触发，自动构建 Android + Windows，发 GitHub Release。
+推 tag `v*.*.*` 或手动触发，自动构建 Android、Windows 和 Linux 后端 RPM，并发布到 GitHub Release。
 
 
 ## 项目结构

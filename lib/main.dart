@@ -136,7 +136,7 @@ class _HomePageState extends State<HomePage> {
         }
       }
     });
-    
+
     // 连接WebSocket
     ApiService.connectWebSocket();
   }
@@ -169,8 +169,6 @@ class _HomePageState extends State<HomePage> {
       print('Error syncing staff list: $e');
     }
   }
-
-
 
   Future<void> _syncFromServer() async {
     if (_isSyncing) return;
@@ -210,26 +208,6 @@ class _HomePageState extends State<HomePage> {
           _isServerConnected = false;
         });
       }
-    }
-  }
-
-  // 测试服务器连接状态
-  Future<void> _testServerConnection() async {
-    try {
-      // 简单的连接测试
-      await ApiService.syncLedgers().timeout(const Duration(seconds: 5));
-      if (mounted) {
-        setState(() {
-          _isServerConnected = true;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isServerConnected = false;
-        });
-      }
-      rethrow;
     }
   }
 

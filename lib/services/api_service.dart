@@ -15,10 +15,10 @@ class ApiService {
   static Database? _localDb;
   static WebSocket? _webSocket;
   static StreamSubscription? _webSocketSubscription;
-  static String? _lastSyncTime;
   static bool _isConnected = false;
+  static bool _syncInProgress = false;
   static final _syncController = StreamController<bool>.broadcast();
-  
+
   static Stream<bool> get syncStream => _syncController.stream;
   static bool get isConnected => _isConnected;
 
@@ -68,10 +68,6 @@ class ApiService {
     return '$scheme://$host$defaultPort/api/v1/ws';
   }
 
-  static Future<void> _validateBackendConfig() async {
-    await _getBackendBaseUrl();
-  }
-
   static Future<void> _validateDatabaseConfig() async {
     final prefs = await SharedPreferences.getInstance();
     final host = prefs.getString('dbHost')?.trim() ?? '';
@@ -86,6 +82,22 @@ class ApiService {
     final port = int.tryParse(portStr);
     if (port == null || port <= 0 || port > 65535) {
       throw Exception('数据库端口无效，请输入 1-65535 之间的端口');
+    }
+  }
+
+  static Future<T> _runForMode<T>({
+    required Future<T> Function() local,
+    required Future<T> Function() backend,
+    required Future<T> Function() database,
+  }) async {
+    final mode = await _getConnectionMode();
+    switch (mode) {
+      case ConnectionMode.local:
+        return await local();
+      case ConnectionMode.backend:
+        return await backend();
+      case ConnectionMode.database:
+        return await database();
     }
   }
 
@@ -208,17 +220,14 @@ class ApiService {
 
       final wsUrl = await _getWebSocketUrl();
       print('WebSocket connecting to: $wsUrl');
-      
+
       // Windows 上使用自定义 SecurityContext 解决 SSL 问题
       final securityContext = SecurityContext();
       final httpClient = HttpClient(context: securityContext);
       httpClient.badCertificateCallback = (cert, host, port) => true;
-      
-      _webSocket = await WebSocket.connect(
-        wsUrl,
-        customClient: httpClient,
-      );
-      
+
+      _webSocket = await WebSocket.connect(wsUrl, customClient: httpClient);
+
       _webSocketSubscription = _webSocket?.listen(
         (data) => _handleWebSocketMessage(data),
         onError: (error) {
@@ -267,9 +276,9 @@ class ApiService {
       final message = json.decode(data);
       final entityType = message['entity_type'];
       final eventType = message['event_type'];
-      
+
       print('Received sync event: $eventType for $entityType');
-      
+
       // 触发同步
       performIncrementalSync();
     } catch (e) {
@@ -280,31 +289,59 @@ class ApiService {
   // ==================== 增量同步 ====================
 
   static Future<void> performIncrementalSync() async {
+    if (_syncInProgress) {
+      print(
+        'DEBUG: skip duplicate incremental sync while another sync is still running',
+      );
+      return;
+    }
+
+    _syncInProgress = true;
+    print('DEBUG: start incremental sync');
+
     try {
       final mode = await _getConnectionMode();
-      if (mode != ConnectionMode.backend) return;
+      if (mode != ConnectionMode.backend) {
+        print(
+          'DEBUG: incremental sync skipped because current mode is not backend',
+        );
+        return;
+      }
 
       final prefs = await SharedPreferences.getInstance();
       final lastSync = prefs.getString('lastSyncTime');
+      print('DEBUG: lastSyncTime=$lastSync');
 
       final baseUrl = await _getBackendBaseUrl();
+      print('DEBUG: syncing with backend url=$baseUrl');
+
       final response = await http.post(
         Uri.parse('$baseUrl/api/v1/sync'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'lastSyncTime': lastSync}),
       );
 
+      print(
+        'DEBUG: sync response status=${response.statusCode}, body=${response.body}',
+      );
+
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = json.decode(response.body);
         await _applySyncChanges(data);
-        
-        // 更新最后同步时间
-        await prefs.setString('lastSyncTime', data['serverTime']);
-        _lastSyncTime = data['serverTime'];
-        print('Sync completed successfully');
+
+        final serverTime = data['serverTime']?.toString();
+        if (serverTime != null && serverTime.isNotEmpty) {
+          await prefs.setString('lastSyncTime', serverTime);
+        }
+        print('DEBUG: sync completed successfully, serverTime=$serverTime');
+      } else {
+        print('DEBUG: sync request failed with status=${response.statusCode}');
       }
     } catch (e) {
-      print('Incremental sync failed: $e');
+      print('DEBUG: incremental sync failed: $e');
+    } finally {
+      _syncInProgress = false;
+      print('DEBUG: incremental sync complete');
     }
   }
 
@@ -316,22 +353,18 @@ class ApiService {
     final records = data['records'] as List? ?? [];
     for (final recordJson in records) {
       final record = Record.fromMap(recordJson);
-      batch.insert(
-        'records',
-        {
-          'id': record.id,
-          'record_id': record.id,
-          'date': record.date.toIso8601String(),
-          'category': record.category,
-          'work_content': record.workContent,
-          'amount': record.amount,
-          'ledger': record.ledger,
-          'image_url': record.imageUrl,
-          'staff_ids': json.encode(record.staffIds),
-          'updated_at': DateTime.now().toIso8601String(),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      batch.insert('records', {
+        'id': record.id,
+        'record_id': record.id,
+        'date': record.date.toIso8601String(),
+        'category': record.category,
+        'work_content': record.workContent,
+        'amount': record.amount,
+        'ledger': record.ledger,
+        'image_url': record.imageUrl,
+        'staff_ids': json.encode(record.staffIds),
+        'updated_at': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 
     // 处理删除的记录
@@ -344,24 +377,18 @@ class ApiService {
     final staffList = data['staff'] as List? ?? [];
     for (final staffJson in staffList) {
       final staff = Staff.fromMap(staffJson);
-      batch.insert(
-        'staff',
-        {
-          'id': int.tryParse(staff.id) ?? 0,
-          'name': staff.name,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      batch.insert('staff', {
+        'id': int.tryParse(staff.id) ?? 0,
+        'name': staff.name,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 
     // 处理账本
     final ledgers = data['ledgers'] as List? ?? [];
     for (final ledger in ledgers) {
-      batch.insert(
-        'ledgers',
-        {'name': ledger},
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
+      batch.insert('ledgers', {
+        'name': ledger,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
 
     await batch.commit(noResult: true);
@@ -477,16 +504,11 @@ class ApiService {
 
   // 获取所有记录
   static Future<List<Record>> getAllRecords() async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _getAllRecordsLocal();
-      case ConnectionMode.backend:
-        return _getAllRecordsBackend();
-      case ConnectionMode.database:
-        return _getAllRecordsDatabase();
-    }
+    return _runForMode(
+      local: _getAllRecordsLocal,
+      backend: _getAllRecordsBackend,
+      database: _getAllRecordsDatabase,
+    );
   }
 
   static Future<List<Record>> _getAllRecordsLocal() async {
@@ -522,16 +544,11 @@ class ApiService {
 
   // 获取最近记录
   static Future<List<Record>> getRecentRecords({int months = 3}) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _getRecentRecordsLocal(months);
-      case ConnectionMode.backend:
-        return _getRecentRecordsBackend(months);
-      case ConnectionMode.database:
-        return _getRecentRecordsDatabase(months);
-    }
+    return _runForMode(
+      local: () => _getRecentRecordsLocal(months),
+      backend: () => _getRecentRecordsBackend(months),
+      database: () => _getRecentRecordsDatabase(months),
+    );
   }
 
   static Future<List<Record>> _getRecentRecordsLocal(int months) async {
@@ -578,16 +595,13 @@ class ApiService {
     String? category,
     String? ledger,
   }) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _searchRecordsLocal(startDate, endDate, category, ledger);
-      case ConnectionMode.backend:
-        return _searchRecordsBackend(startDate, endDate, category, ledger);
-      case ConnectionMode.database:
-        return _searchRecordsDatabase(startDate, endDate, category, ledger);
-    }
+    return _runForMode(
+      local: () => _searchRecordsLocal(startDate, endDate, category, ledger),
+      backend: () =>
+          _searchRecordsBackend(startDate, endDate, category, ledger),
+      database: () =>
+          _searchRecordsDatabase(startDate, endDate, category, ledger),
+    );
   }
 
   static Future<List<Record>> _searchRecordsLocal(
@@ -667,18 +681,15 @@ class ApiService {
 
   // 创建记录
   static Future<Record> createRecord(Record record) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _createRecordLocal(record);
-      case ConnectionMode.backend:
+    return _runForMode(
+      local: () => _createRecordLocal(record),
+      backend: () async {
         final result = await _createRecordBackend(record);
         performIncrementalSync();
         return result;
-      case ConnectionMode.database:
-        return _createRecordDatabase(record);
-    }
+      },
+      database: () => _createRecordDatabase(record),
+    );
   }
 
   static Future<Record> _createRecordLocal(Record record) async {
@@ -739,18 +750,15 @@ class ApiService {
 
   // 更新记录
   static Future<Record> updateRecord(Record record) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _updateRecordLocal(record);
-      case ConnectionMode.backend:
+    return _runForMode(
+      local: () => _updateRecordLocal(record),
+      backend: () async {
         final result = await _updateRecordBackend(record);
         performIncrementalSync();
         return result;
-      case ConnectionMode.database:
-        return _updateRecordDatabase(record);
-    }
+      },
+      database: () => _updateRecordDatabase(record),
+    );
   }
 
   static Future<Record> _updateRecordLocal(Record record) async {
@@ -815,20 +823,14 @@ class ApiService {
 
   // 删除记录
   static Future<void> deleteRecord(String recordId) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        await _deleteRecordLocal(recordId);
-        break;
-      case ConnectionMode.backend:
+    await _runForMode(
+      local: () => _deleteRecordLocal(recordId),
+      backend: () async {
         await _deleteRecordBackend(recordId);
         performIncrementalSync();
-        break;
-      case ConnectionMode.database:
-        await _deleteRecordDatabase(recordId);
-        break;
-    }
+      },
+      database: () => _deleteRecordDatabase(recordId),
+    );
   }
 
   static Future<void> _deleteRecordLocal(String recordId) async {
@@ -909,16 +911,11 @@ class ApiService {
 
   // 获取已删除记录
   static Future<List<Record>> getDeletedRecords() async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _getDeletedRecordsLocal();
-      case ConnectionMode.backend:
-        return _getDeletedRecordsBackend();
-      case ConnectionMode.database:
-        return _getDeletedRecordsDatabase();
-    }
+    return _runForMode(
+      local: _getDeletedRecordsLocal,
+      backend: _getDeletedRecordsBackend,
+      database: _getDeletedRecordsDatabase,
+    );
   }
 
   static Future<List<Record>> _getDeletedRecordsLocal() async {
@@ -951,20 +948,14 @@ class ApiService {
 
   // 恢复已删除记录
   static Future<void> restoreRecord(String recordId) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        await _restoreRecordLocal(recordId);
-        break;
-      case ConnectionMode.backend:
+    await _runForMode(
+      local: () => _restoreRecordLocal(recordId),
+      backend: () async {
         await _restoreRecordBackend(recordId);
         performIncrementalSync();
-        break;
-      case ConnectionMode.database:
-        await _restoreRecordDatabase(recordId);
-        break;
-    }
+      },
+      database: () => _restoreRecordDatabase(recordId),
+    );
   }
 
   static Future<void> _restoreRecordLocal(String recordId) async {
@@ -1042,19 +1033,11 @@ class ApiService {
 
   // 永久删除记录
   static Future<void> permanentlyDeleteRecord(String recordId) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        await _permanentlyDeleteRecordLocal(recordId);
-        break;
-      case ConnectionMode.backend:
-        await _permanentlyDeleteRecordBackend(recordId);
-        break;
-      case ConnectionMode.database:
-        await _permanentlyDeleteRecordDatabase(recordId);
-        break;
-    }
+    await _runForMode(
+      local: () => _permanentlyDeleteRecordLocal(recordId),
+      backend: () => _permanentlyDeleteRecordBackend(recordId),
+      database: () => _permanentlyDeleteRecordDatabase(recordId),
+    );
   }
 
   static Future<void> _permanentlyDeleteRecordLocal(String recordId) async {
@@ -1085,16 +1068,11 @@ class ApiService {
   // ==================== 账本操作 ====================
 
   static Future<List<String>> getAllLedgers() async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _getAllLedgersLocal();
-      case ConnectionMode.backend:
-        return _getAllLedgersBackend();
-      case ConnectionMode.database:
-        return _getAllLedgersDatabase();
-    }
+    return _runForMode(
+      local: _getAllLedgersLocal,
+      backend: _getAllLedgersBackend,
+      database: _getAllLedgersDatabase,
+    );
   }
 
   static Future<List<String>> _getAllLedgersLocal() async {
@@ -1126,18 +1104,15 @@ class ApiService {
   }
 
   static Future<String> createLedger(String name) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _createLedgerLocal(name);
-      case ConnectionMode.backend:
+    return _runForMode(
+      local: () => _createLedgerLocal(name),
+      backend: () async {
         final result = await _createLedgerBackend(name);
         performIncrementalSync();
         return result;
-      case ConnectionMode.database:
-        return _createLedgerDatabase(name);
-    }
+      },
+      database: () => _createLedgerDatabase(name),
+    );
   }
 
   static Future<String> _createLedgerLocal(String name) async {
@@ -1163,18 +1138,15 @@ class ApiService {
   }
 
   static Future<String> updateLedger(String oldName, String newName) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _updateLedgerLocal(oldName, newName);
-      case ConnectionMode.backend:
+    return _runForMode(
+      local: () => _updateLedgerLocal(oldName, newName),
+      backend: () async {
         final result = await _updateLedgerBackend(oldName, newName);
         performIncrementalSync();
         return result;
-      case ConnectionMode.database:
-        return _updateLedgerDatabase(oldName, newName);
-    }
+      },
+      database: () => _updateLedgerDatabase(oldName, newName),
+    );
   }
 
   static Future<String> _updateLedgerLocal(
@@ -1227,30 +1199,20 @@ class ApiService {
   }
 
   static Future<void> deleteLedger(String name) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        await _deleteLedgerLocal(name);
-        break;
-      case ConnectionMode.backend:
+    await _runForMode(
+      local: () => _deleteLedgerLocal(name),
+      backend: () async {
         await _deleteLedgerBackend(name);
         performIncrementalSync();
-        break;
-      case ConnectionMode.database:
-        await _deleteLedgerDatabase(name);
-        break;
-    }
+      },
+      database: () => _deleteLedgerDatabase(name),
+    );
   }
 
   static Future<void> _deleteLedgerLocal(String name) async {
     final db = await _getLocalDb();
     // 先删除该账本下的所有记录
-    await db.delete(
-      'records',
-      where: 'ledger = ?',
-      whereArgs: [name],
-    );
+    await db.delete('records', where: 'ledger = ?', whereArgs: [name]);
     await db.delete('ledgers', where: 'name = ?', whereArgs: [name]);
   }
 
@@ -1270,10 +1232,7 @@ class ApiService {
     final conn = await MySqlConnection.connect(settings);
     try {
       // 先删除该账本下的所有记录
-      await conn.query(
-        'DELETE FROM records WHERE ledger = ?',
-        [name],
-      );
+      await conn.query('DELETE FROM records WHERE ledger = ?', [name]);
       await conn.query('DELETE FROM ledgers WHERE name = ?', [name]);
     } finally {
       await conn.close();
@@ -1283,16 +1242,11 @@ class ApiService {
   // ==================== 人员操作 ====================
 
   static Future<List<Staff>> getAllStaff() async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _getAllStaffLocal();
-      case ConnectionMode.backend:
-        return _getAllStaffBackend();
-      case ConnectionMode.database:
-        return _getAllStaffDatabase();
-    }
+    return _runForMode(
+      local: _getAllStaffLocal,
+      backend: _getAllStaffBackend,
+      database: _getAllStaffDatabase,
+    );
   }
 
   static Future<List<Staff>> _getAllStaffLocal() async {
@@ -1331,18 +1285,15 @@ class ApiService {
   }
 
   static Future<Staff> addStaff(Staff staff) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _addStaffLocal(staff);
-      case ConnectionMode.backend:
+    return _runForMode(
+      local: () => _addStaffLocal(staff),
+      backend: () async {
         final result = await _addStaffBackend(staff);
         performIncrementalSync();
         return result;
-      case ConnectionMode.database:
-        return _addStaffDatabase(staff);
-    }
+      },
+      database: () => _addStaffDatabase(staff),
+    );
   }
 
   static Future<Staff> _addStaffLocal(Staff staff) async {
@@ -1370,18 +1321,15 @@ class ApiService {
   }
 
   static Future<Staff> updateStaff(Staff staff) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _updateStaffLocal(staff);
-      case ConnectionMode.backend:
+    return _runForMode(
+      local: () => _updateStaffLocal(staff),
+      backend: () async {
         final result = await _updateStaffBackend(staff);
         performIncrementalSync();
         return result;
-      case ConnectionMode.database:
-        return _updateStaffDatabase(staff);
-    }
+      },
+      database: () => _updateStaffDatabase(staff),
+    );
   }
 
   static Future<Staff> _updateStaffLocal(Staff staff) async {
@@ -1415,25 +1363,23 @@ class ApiService {
   }
 
   static Future<void> deleteStaff(String staffId) async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        await _deleteStaffLocal(staffId);
-        break;
-      case ConnectionMode.backend:
+    await _runForMode(
+      local: () => _deleteStaffLocal(staffId),
+      backend: () async {
         await _deleteStaffBackend(staffId);
         performIncrementalSync();
-        break;
-      case ConnectionMode.database:
-        await _deleteStaffDatabase(staffId);
-        break;
-    }
+      },
+      database: () => _deleteStaffDatabase(staffId),
+    );
   }
 
   static Future<void> _deleteStaffLocal(String staffId) async {
     final db = await _getLocalDb();
-    await db.delete('staff', where: 'id = ?', whereArgs: [int.tryParse(staffId) ?? 0]);
+    await db.delete(
+      'staff',
+      where: 'id = ?',
+      whereArgs: [int.tryParse(staffId) ?? 0],
+    );
   }
 
   static Future<void> _deleteStaffBackend(String staffId) async {
@@ -1444,7 +1390,9 @@ class ApiService {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      await conn.query('DELETE FROM staff WHERE id = ?', [int.tryParse(staffId) ?? 0]);
+      await conn.query('DELETE FROM staff WHERE id = ?', [
+        int.tryParse(staffId) ?? 0,
+      ]);
     } finally {
       await conn.close();
     }
@@ -1453,16 +1401,11 @@ class ApiService {
   // ==================== 工作内容和类别 ====================
 
   static Future<List<String>> getWorkContents() async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _getWorkContentsLocal();
-      case ConnectionMode.backend:
-        return _getWorkContentsBackend();
-      case ConnectionMode.database:
-        return _getWorkContentsDatabase();
-    }
+    return _runForMode(
+      local: _getWorkContentsLocal,
+      backend: _getWorkContentsBackend,
+      database: _getWorkContentsDatabase,
+    );
   }
 
   static Future<List<String>> _getWorkContentsLocal() async {
@@ -1496,16 +1439,11 @@ class ApiService {
   }
 
   static Future<List<String>> getCategories() async {
-    final mode = await _getConnectionMode();
-
-    switch (mode) {
-      case ConnectionMode.local:
-        return _getCategoriesLocal();
-      case ConnectionMode.backend:
-        return _getCategoriesBackend();
-      case ConnectionMode.database:
-        return _getCategoriesDatabase();
-    }
+    return _runForMode(
+      local: _getCategoriesLocal,
+      backend: _getCategoriesBackend,
+      database: _getCategoriesDatabase,
+    );
   }
 
   static Future<List<String>> _getCategoriesLocal() async {

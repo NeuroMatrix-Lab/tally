@@ -150,8 +150,131 @@ jobs:
           path: build/windows/tally-*.zip
           if-no-files-found: error
 
+  build-server-rpm:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set Version
+        id: set_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag_name }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          VERSION="${VERSION#v}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+(\.[0-9]+){2}([-.][0-9A-Za-z.-]+)?$'; then
+            echo "Invalid release version for RPM: $VERSION"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install RPM tooling
+        run: sudo apt-get update && sudo apt-get install --yes rpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('server/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build server
+        working-directory: server
+        run: cargo build --release --locked
+
+      - name: Package server RPM
+        working-directory: server
+        env:
+          RPM_VERSION: ${{ steps.set_version.outputs.version }}
+        run: |
+          RPM_ROOT="$PWD/rpmbuild"
+          mkdir -p "$RPM_ROOT"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+          mkdir -p "$RPM_ROOT/buildroot/usr/bin"
+          mkdir -p "$RPM_ROOT/buildroot/etc/tally"
+          mkdir -p "$RPM_ROOT/buildroot/usr/lib/systemd/system"
+
+          install -m 0755 target/release/tally-server "$RPM_ROOT/buildroot/usr/bin/tally-server"
+          install -m 0644 config.toml "$RPM_ROOT/buildroot/etc/tally/config.toml"
+          cat > "$RPM_ROOT/buildroot/usr/lib/systemd/system/tally-server.service" <<'EOF'
+          [Unit]
+          Description=Tally bookkeeping backend
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/tally-server
+          Environment=CONFIG_PATH=/etc/tally/config.toml
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          cat > "$RPM_ROOT/SPECS/tally-server.spec" <<EOF
+          Name:           tally-server
+          Version:        ${RPM_VERSION}
+          Release:        1%{?dist}
+          Summary:        Tally bookkeeping backend
+          License:        MIT
+          AutoReqProv:    no
+          Requires:       openssl-libs
+          Requires:       ca-certificates
+          Requires:       systemd
+
+          %description
+          Rust backend service for the Tally bookkeeping application.
+
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          mkdir -p %{buildroot}/etc/tally
+          mkdir -p %{buildroot}/usr/lib/systemd/system
+          cp -a %{_topdir}/buildroot/usr/bin/tally-server %{buildroot}/usr/bin/
+          cp -a %{_topdir}/buildroot/etc/tally/config.toml %{buildroot}/etc/tally/
+          cp -a %{_topdir}/buildroot/usr/lib/systemd/system/tally-server.service %{buildroot}/usr/lib/systemd/system/
+
+          %post
+          systemctl daemon-reload >/dev/null 2>&1 || :
+
+          %preun
+          if [ "$1" -eq 0 ]; then
+            systemctl disable --now tally-server.service >/dev/null 2>&1 || :
+          fi
+
+          %postun
+          systemctl daemon-reload >/dev/null 2>&1 || :
+
+          %files
+          %attr(0755,root,root) /usr/bin/tally-server
+          %config(noreplace) %attr(0644,root,root) /etc/tally/config.toml
+          %attr(0644,root,root) /usr/lib/systemd/system/tally-server.service
+          EOF
+
+          rpmbuild --define "_topdir $RPM_ROOT" -bb "$RPM_ROOT/SPECS/tally-server.spec"
+
+          mkdir -p ../builds/server
+          cp "$RPM_ROOT"/RPMS/*/tally-server-*.rpm "../builds/server/tally-server-${RPM_VERSION}-linux.rpm"
+
+      - name: Upload server RPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-rpm
+          path: builds/server/tally-server-*.rpm
+          if-no-files-found: error
+
   release:
-    needs: [build-android, build-windows]
+    needs: [build-android, build-windows, build-server-rpm]
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -173,6 +296,7 @@ jobs:
         run: |
           mkdir -p builds/android
           mkdir -p builds/windows
+          mkdir -p builds/server
       
       - name: Download Android Artifacts
         uses: actions/download-artifact@v4
@@ -185,6 +309,12 @@ jobs:
         with:
           name: windows-builds
           path: builds/windows
+
+      - name: Download server RPM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: server-rpm
+          path: builds/server
       
       - name: List all downloaded files
         run: |
@@ -192,6 +322,8 @@ jobs:
           find builds/android -type f -ls
           echo "=== Windows files ==="
           find builds/windows -type f -ls
+          echo "=== Server files ==="
+          find builds/server -type f -ls
       
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -210,3 +342,4 @@ jobs:
             ## Builds
             - Android: APK and AppBundle
             - Windows: Zip archive
+            - Linux server: RPM package
