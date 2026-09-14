@@ -3,15 +3,16 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Path, State,
     },
+    middleware::{self, Next},
     response::IntoResponse,
     routing::{get, post, put, delete},
     Router,
     Json,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, Uri},
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{mysql::MySqlPoolOptions, MySqlPool, Row};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -31,6 +32,8 @@ struct Config {
 #[derive(Debug, Deserialize)]
 struct ServerConfig {
     port: u16,
+    #[serde(default)]
+    password: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,7 +48,10 @@ struct DatabaseConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            server: ServerConfig { port: 7378 },
+            server: ServerConfig {
+                port: 7378,
+                password: String::new(),
+            },
             database: DatabaseConfig {
                 host: "127.0.0.1".to_string(),
                 port: 3306,
@@ -83,6 +89,10 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .unwrap_or(config.server.port);
 
+        if let Ok(password) = std::env::var("API_PASSWORD") {
+            config.server.password = password;
+        }
+
         config.database.host = std::env::var("DB_HOST").unwrap_or(config.database.host);
         config.database.port = std::env::var("DB_PORT")
             .ok()
@@ -93,8 +103,9 @@ impl Config {
         config.database.name = std::env::var("DB_NAME").unwrap_or(config.database.name);
 
         println!(
-            "[debug] final config: server_port={}, db_host={}, db_port={}, db_user={}, db_name={}",
+            "[debug] final config: server_port={}, api_auth={}, db_host={}, db_port={}, db_user={}, db_name={}",
             config.server.port,
+            if config.server.password.is_empty() { "disabled" } else { "enabled" },
             config.database.host,
             config.database.port,
             config.database.user,
@@ -121,6 +132,8 @@ struct AppState {
     db: MySqlPool,
     request_count: Arc<std::sync::atomic::AtomicU64>,
     tx: broadcast::Sender<SyncMessage>,
+    /// 空字符串表示未启用鉴权
+    api_password: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,6 +276,7 @@ async fn main() -> Result<()> {
         db: pool,
         request_count: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         tx,
+        api_password: config.server.password.clone(),
     });
 
     let cors = CorsLayer::new()
@@ -272,6 +286,7 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/api/v1/health", get(health_check))
+        .route("/api/v1/auth", get(auth_check))
         .route("/api/v1/metrics", get(get_metrics))
         .route("/api/v1/ws", get(ws_handler))
         .route("/api/v1/sync", post(incremental_sync))
@@ -294,6 +309,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/staff/:id", delete(delete_staff))
         .route("/api/v1/work-contents", get(get_work_contents))
         .route("/api/v1/categories", get(get_categories))
+        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         .layer(cors)
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
@@ -321,7 +337,7 @@ async fn init_database(pool: &MySqlPool) -> Result<()> {
             date DATETIME NOT NULL,
             category VARCHAR(255) NOT NULL,
             work_content TEXT NOT NULL,
-            amount DECIMAL(10, 2) NOT NULL,
+            amount DOUBLE NOT NULL,
             ledger VARCHAR(255) NOT NULL,
             image_url TEXT,
             staff_ids JSON,
@@ -371,9 +387,97 @@ async fn init_database(pool: &MySqlPool) -> Result<()> {
         .execute(pool)
         .await?;
 
+    // 旧库可能是 DECIMAL，sqlx 读 f64 会 panic；统一成 DOUBLE
+    if let Err(e) = sqlx::query("ALTER TABLE records MODIFY amount DOUBLE NOT NULL")
+        .execute(pool)
+        .await
+    {
+        tracing::warn!("skip amount column alter: {:?}", e);
+    }
+
     println!("Database tables initialized successfully!");
     
     Ok(())
+}
+
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(byte) = u8::from_str_radix(&input[i + 1..i + 3], 16) {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        if bytes[i] == b'+' {
+            out.push(b' ');
+            i += 1;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn extract_api_password(headers: &HeaderMap, uri: &Uri) -> Option<String> {
+    if let Some(value) = headers
+        .get("x-api-password")
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| !v.is_empty())
+    {
+        return Some(value.to_string());
+    }
+
+    if let Some(value) = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .filter(|v| !v.is_empty())
+    {
+        return Some(value.to_string());
+    }
+
+    if let Some(query) = uri.query() {
+        for pair in query.split('&') {
+            if let Some(value) = pair.strip_prefix("password=") {
+                return Some(percent_decode(value));
+            }
+        }
+    }
+
+    None
+}
+
+async fn auth_middleware(
+    State(state): State<Arc<AppState>>,
+    request: axum::extract::Request,
+    next: Next,
+) -> Result<axum::response::Response, StatusCode> {
+    if state.api_password.is_empty() {
+        return Ok(next.run(request).await);
+    }
+
+    // 健康检查保持开放，便于连通性探测
+    if request.uri().path() == "/api/v1/health" {
+        return Ok(next.run(request).await);
+    }
+
+    let provided = extract_api_password(request.headers(), request.uri());
+    match provided.as_deref() {
+        Some(value) if value == state.api_password.as_str() => Ok(next.run(request).await),
+        _ => Err(StatusCode::UNAUTHORIZED),
+    }
+}
+
+async fn auth_check(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "authRequired": !state.api_password.is_empty(),
+        "status": "ok"
+    }))
 }
 
 async fn health_check(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -427,16 +531,27 @@ async fn ws_handler(
 
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let mut rx = state.tx.subscribe();
-    
+
     info!("New WebSocket client connected");
 
     let (mut sender, mut receiver) = socket.split();
+    let (pong_tx, mut pong_rx) = tokio::sync::mpsc::channel::<()>(4);
 
     let mut send_task = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            let msg_str = serde_json::to_string(&msg).unwrap();
-            if sender.send(Message::Text(msg_str)).await.is_err() {
-                break;
+        loop {
+            tokio::select! {
+                Ok(msg) = rx.recv() => {
+                    let msg_str = serde_json::to_string(&msg).unwrap();
+                    if sender.send(Message::Text(msg_str)).await.is_err() {
+                        break;
+                    }
+                }
+                Some(_) = pong_rx.recv() => {
+                    if sender.send(Message::Text("{\"type\":\"pong\"}".to_string())).await.is_err() {
+                        break;
+                    }
+                }
+                else => break,
             }
         }
     });
@@ -445,8 +560,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
                 Message::Text(text) => {
+                    // 客户端心跳，避免 Cloudflare 等代理空闲断连
+                    if text.contains("ping") {
+                        let _ = pong_tx.send(()).await;
+                        continue;
+                    }
                     info!("Received message from client: {}", text);
                 }
+                Message::Ping(_) | Message::Pong(_) => {}
                 Message::Close(_) => {
                     break;
                 }
@@ -459,7 +580,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         _ = (&mut send_task) => recv_task.abort(),
         _ = (&mut recv_task) => send_task.abort(),
     }
-    
+
     info!("WebSocket client disconnected");
 }
 
@@ -481,9 +602,11 @@ async fn incremental_sync(
 ) -> Result<Json<IncrementalSyncResponse>, StatusCode> {
     println!("[debug] incremental_sync request received: last_sync_time={:?}", req.last_sync_time);
 
+    // MySQL TIMESTAMP 秒级精度；截断到整秒并用 >=，避免同一秒内的变更被漏掉
     let last_sync_time = req.last_sync_time
         .and_then(|t| DateTime::parse_from_rfc3339(&t).ok())
-        .map(|dt| dt.with_timezone(&Utc));
+        .map(|dt| dt.with_timezone(&Utc))
+        .map(|dt| dt.with_nanosecond(0).unwrap_or(dt));
 
     let server_time = Utc::now();
 
@@ -492,7 +615,7 @@ async fn incremental_sync(
             r#"
             SELECT record_id, date, category, work_content, amount, ledger, image_url, staff_ids, updated_at, deleted_at
             FROM records
-            WHERE updated_at > ?
+            WHERE updated_at >= ?
             ORDER BY updated_at DESC
             "#
         )
@@ -533,7 +656,7 @@ async fn incremental_sync(
     );
 
     let deleted_staff_ids = if let Some(since) = last_sync_time {
-        let rows = sqlx::query("SELECT id FROM staff WHERE deleted_at > ? AND deleted_at IS NOT NULL")
+        let rows = sqlx::query("SELECT id FROM staff WHERE deleted_at >= ? AND deleted_at IS NOT NULL")
             .bind(since)
             .fetch_all(&state.db)
             .await
@@ -579,23 +702,45 @@ async fn get_all_records_from_db(db: &MySqlPool) -> Result<Vec<Record>, StatusCo
     Ok(records)
 }
 
+fn decode_amount(row: &sqlx::mysql::MySqlRow) -> f64 {
+    // 表结构是 DECIMAL，sqlx 不能直接当 f64 解，会 panic
+    if let Ok(v) = row.try_get::<f64, _>("amount") {
+        return v;
+    }
+    if let Ok(v) = row.try_get::<String, _>("amount") {
+        return v.trim().parse().unwrap_or(0.0);
+    }
+    if let Ok(v) = row.try_get::<i64, _>("amount") {
+        return v as f64;
+    }
+    if let Ok(v) = row.try_get::<i32, _>("amount") {
+        return v as f64;
+    }
+    0.0
+}
+
 fn row_to_record(row: sqlx::mysql::MySqlRow) -> Record {
     let staff_ids: Vec<String> = row.try_get::<String, _>("staff_ids")
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
 
-    let updated_at: Option<DateTime<Utc>> = row.get("updated_at");
-    let deleted_at: Option<DateTime<Utc>> = row.get("deleted_at");
+    // 用 try_get，避免异常字段导致进程 panic
+    let updated_at: Option<DateTime<Utc>> = row.try_get("updated_at").ok().flatten();
+    let deleted_at: Option<DateTime<Utc>> = row.try_get("deleted_at").ok().flatten();
+    let date: DateTime<Utc> = row
+        .try_get::<DateTime<Utc>, _>("date")
+        .unwrap_or_else(|_| Utc::now());
+    let amount = decode_amount(&row);
 
     Record {
-        id: row.get("record_id"),
-        record_id: row.get("record_id"),
-        date: row.get::<DateTime<Utc>, _>("date").to_rfc3339(),
-        category: row.get("category"),
-        work_content: row.get("work_content"),
-        amount: row.get::<f64, _>("amount"),
-        ledger: row.get("ledger"),
+        id: row.try_get::<String, _>("record_id").unwrap_or_default(),
+        record_id: row.try_get::<String, _>("record_id").unwrap_or_default(),
+        date: date.to_rfc3339(),
+        category: row.try_get("category").unwrap_or_default(),
+        work_content: row.try_get("work_content").unwrap_or_default(),
+        amount,
+        ledger: row.try_get("ledger").unwrap_or_default(),
         image_url: row.try_get::<Option<String>, _>("image_url").ok().flatten(),
         staff_ids,
         updated_at: updated_at.map(|dt| dt.to_rfc3339()),
@@ -806,16 +951,19 @@ async fn delete_record(
 async fn get_deleted_records(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Record>>, StatusCode> {
     let rows = sqlx::query(
         r#"
-        SELECT 
+        SELECT
             record_id, date, category, work_content, amount, ledger, image_url, staff_ids, updated_at, deleted_at
-        FROM records 
+        FROM records
         WHERE deleted_at IS NOT NULL
         ORDER BY deleted_at DESC
         "#
     )
     .fetch_all(&state.db)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|e| {
+        error!("get_deleted_records query failed: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let records = rows.into_iter().map(row_to_record).collect();
     Ok(Json(records))
@@ -940,7 +1088,7 @@ async fn get_all_staff(State(state): State<Arc<AppState>>) -> Result<Json<Vec<St
 async fn get_all_staff_from_db(db: &MySqlPool, since: Option<DateTime<Utc>>) -> Result<Vec<Staff>, StatusCode> {
     let query = if let Some(since) = since {
         sqlx::query(
-            "SELECT id, name, updated_at FROM staff WHERE updated_at > ? AND deleted_at IS NULL ORDER BY name"
+            "SELECT id, name, updated_at FROM staff WHERE updated_at >= ? AND deleted_at IS NULL ORDER BY name"
         ).bind(since)
     } else {
         sqlx::query("SELECT id, name, updated_at FROM staff WHERE deleted_at IS NULL ORDER BY name")
@@ -1063,4 +1211,39 @@ async fn get_categories(State(state): State<Arc<AppState>>) -> Result<Json<Vec<S
 
     let categories = rows.into_iter().map(|row| row.get("category")).collect();
     Ok(Json(categories))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::{HeaderMap, HeaderValue, Uri};
+
+    #[test]
+    fn extracts_password_from_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-api-password", HeaderValue::from_static("secret"));
+        let uri = Uri::from_static("/api/v1/records");
+        assert_eq!(extract_api_password(&headers, &uri).as_deref(), Some("secret"));
+    }
+
+    #[test]
+    fn extracts_password_from_bearer() {
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", HeaderValue::from_static("Bearer secret"));
+        let uri = Uri::from_static("/api/v1/records");
+        assert_eq!(extract_api_password(&headers, &uri).as_deref(), Some("secret"));
+    }
+
+    #[test]
+    fn extracts_password_from_query() {
+        let headers = HeaderMap::new();
+        let uri = Uri::from_static("/api/v1/ws?password=secret");
+        assert_eq!(extract_api_password(&headers, &uri).as_deref(), Some("secret"));
+    }
+
+    #[test]
+    fn percent_decodes_password() {
+        assert_eq!(percent_decode("a%20b"), "a b");
+        assert_eq!(percent_decode("a+b"), "a b");
+    }
 }

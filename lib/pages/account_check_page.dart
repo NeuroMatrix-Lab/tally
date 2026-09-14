@@ -82,9 +82,11 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/$sheetName.xlsx');
     await file.writeAsBytes(excel.encode()!);
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      text: '$sheetName 导出',
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(file.path)],
+        text: '$sheetName 导出',
+      ),
     );
   }
 

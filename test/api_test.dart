@@ -10,6 +10,15 @@ String get baseUrl {
   return 'http://127.0.0.1:7378';
 }
 
+Map<String, String> get apiHeaders {
+  final password = Platform.environment['API_PASSWORD']?.trim() ?? '';
+  final headers = {'Content-Type': 'application/json'};
+  if (password.isNotEmpty) {
+    headers['X-Api-Password'] = password;
+  }
+  return headers;
+}
+
 void main() async {
   print('🧪 后端 API 测试脚本');
   print('=' * 50);
@@ -46,7 +55,7 @@ Future<void> testHealthCheck() async {
 Future<void> testMetrics() async {
   print('\n📊 测试指标接口...');
   try {
-    final response = await http.get(Uri.parse('$baseUrl/api/v1/metrics'));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/metrics'), headers: apiHeaders);
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       print('✅ 指标获取成功');
@@ -62,7 +71,7 @@ Future<void> testMetrics() async {
 Future<void> testGetRecords() async {
   print('\n📝 测试获取记录...');
   try {
-    final response = await http.get(Uri.parse('$baseUrl/api/v1/records'));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/records'), headers: apiHeaders);
     if (response.statusCode == 200) {
       final data = json.decode(response.body) as List;
       print('✅ 获取记录成功: ${data.length} 条记录');
@@ -90,7 +99,7 @@ Future<void> testCreateRecord() async {
 
     final response = await http.post(
       Uri.parse('$baseUrl/api/v1/records'),
-      headers: {'Content-Type': 'application/json'},
+      headers: apiHeaders,
       body: json.encode(testRecord),
     );
 
@@ -111,7 +120,7 @@ Future<void> testCreateRecord() async {
 Future<void> testGetLedgers() async {
   print('\n📒 测试获取账本...');
   try {
-    final response = await http.get(Uri.parse('$baseUrl/api/v1/ledgers'));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/ledgers'), headers: apiHeaders);
     if (response.statusCode == 200) {
       final data = json.decode(response.body) as List;
       print('✅ 获取账本成功: ${data.join(", ")}');
@@ -126,7 +135,7 @@ Future<void> testGetLedgers() async {
 Future<void> testGetStaff() async {
   print('\n👥 测试获取人员...');
   try {
-    final response = await http.get(Uri.parse('$baseUrl/api/v1/staff'));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/staff'), headers: apiHeaders);
     if (response.statusCode == 200) {
       final data = json.decode(response.body) as List;
       print('✅ 获取人员成功: ${data.length} 人');
@@ -141,7 +150,7 @@ Future<void> testGetStaff() async {
 Future<void> testGetWorkContents() async {
   print('\n💼 测试获取工作内容...');
   try {
-    final response = await http.get(Uri.parse('$baseUrl/api/v1/work-contents'));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/work-contents'), headers: apiHeaders);
     if (response.statusCode == 200) {
       final data = json.decode(response.body) as List;
       print('✅ 获取工作内容成功: ${data.length} 项');
@@ -156,7 +165,7 @@ Future<void> testGetWorkContents() async {
 Future<void> testGetCategories() async {
   print('\n🏷️ 测试获取类别...');
   try {
-    final response = await http.get(Uri.parse('$baseUrl/api/v1/categories'));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/categories'), headers: apiHeaders);
     if (response.statusCode == 200) {
       final data = json.decode(response.body) as List;
       print('✅ 获取类别成功: ${data.length} 项');
@@ -173,7 +182,7 @@ Future<void> testSync() async {
   try {
     final response = await http.post(
       Uri.parse('$baseUrl/api/v1/sync'),
-      headers: {'Content-Type': 'application/json'},
+      headers: apiHeaders,
       body: json.encode({'lastSyncTime': null}),
     );
 
@@ -194,7 +203,7 @@ Future<void> testSync() async {
 
 Future<void> _cleanupRecord(String recordId) async {
   try {
-    await http.delete(Uri.parse('$baseUrl/api/v1/records/$recordId/permanent'));
+    await http.delete(Uri.parse('$baseUrl/api/v1/records/$recordId/permanent'), headers: apiHeaders);
     print('   🗑️ 已清理测试记录');
   } catch (e) {
     print('   ⚠️ 清理测试记录失败: $e');

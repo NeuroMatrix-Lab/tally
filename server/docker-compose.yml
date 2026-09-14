@@ -28,6 +28,8 @@ services:
         condition: service_healthy
     environment:
       PORT: ${PORT:-7378}
+      # 可选：API 访问密码，留空则不启用鉴权
+      API_PASSWORD: ${API_PASSWORD:-}
       DB_HOST: db
       DB_PORT: 3306
       DB_USER: ${DB_USER:-tally_user}

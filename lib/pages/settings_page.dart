@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 import 'package:mysql1/mysql1.dart';
 import '../services/api_service.dart';
+import '../services/backend_client.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -21,6 +21,8 @@ class _SettingsPageState extends State<SettingsPage> {
   // 后端服务模式配置
   final TextEditingController _backendIpController = TextEditingController();
   final TextEditingController _backendPortController = TextEditingController();
+  final TextEditingController _backendPasswordController =
+      TextEditingController();
 
   // 数据库直通模式配置
   final TextEditingController _dbHostController = TextEditingController();
@@ -45,6 +47,8 @@ class _SettingsPageState extends State<SettingsPage> {
       _backendProtocol = protocol;
       _backendIpController.text = prefs.getString('backendIp') ?? '';
       _backendPortController.text = savedPort;
+      _backendPasswordController.text =
+          prefs.getString('backendPassword') ?? '';
       _dbHostController.text = prefs.getString('dbHost') ?? '';
       _dbPortController.text = prefs.getString('dbPort') ?? '3306';
       _dbUserController.text = prefs.getString('dbUser') ?? '';
@@ -93,6 +97,10 @@ class _SettingsPageState extends State<SettingsPage> {
       await prefs.setInt('connectionMode', _selectedMode.index);
       await prefs.setString('backendIp', _backendIpController.text.trim());
       await prefs.setString('backendPort', _backendPortController.text.trim());
+      await prefs.setString(
+        'backendPassword',
+        _backendPasswordController.text.trim(),
+      );
       await prefs.setString('dbHost', _dbHostController.text.trim());
       await prefs.setString('dbPort', _dbPortController.text.trim());
       await prefs.setString('dbUser', _dbUserController.text.trim());
@@ -126,6 +134,10 @@ class _SettingsPageState extends State<SettingsPage> {
       await prefs.setInt('connectionMode', _selectedMode.index);
       await prefs.setString('backendIp', _backendIpController.text.trim());
       await prefs.setString('backendPort', _backendPortController.text.trim());
+      await prefs.setString(
+        'backendPassword',
+        _backendPasswordController.text.trim(),
+      );
       await prefs.setString('dbHost', _dbHostController.text.trim());
       await prefs.setString('dbPort', _dbPortController.text.trim());
       await prefs.setString('dbUser', _dbUserController.text.trim());
@@ -158,20 +170,20 @@ class _SettingsPageState extends State<SettingsPage> {
       if (_selectedMode == ConnectionMode.backend) {
         final ip = _backendIpController.text.trim();
         final port = _backendPortController.text.trim();
+        final password = _backendPasswordController.text.trim();
 
         try {
-          final scheme = _backendProtocol;
-          final defaultPort = (scheme == 'https' && port == '443') || (scheme == 'http' && port == '80') ? '' : ':$port';
-          final response = await http
-              .get(Uri.parse('$scheme://$ip$defaultPort/api/v1/health'))
-              .timeout(const Duration(seconds: 10));
-
-          if (response.statusCode == 200) {
-            message = '连接成功！服务器正常运行';
-            success = true;
-          } else {
-            message = '连接失败：服务器返回状态码 ${response.statusCode}';
-          }
+          final authInfo = await BackendClient.verifyConnection(
+            scheme: _backendProtocol,
+            host: ip,
+            port: port,
+            password: password,
+          );
+          final authRequired = authInfo['authRequired'] == true;
+          message = authRequired
+              ? '连接成功！密码校验通过'
+              : '连接成功！服务器正常运行（未启用密码）';
+          success = true;
         } on TimeoutException {
           message = '连接超时，请检查后端服务是否可达';
         } catch (e) {
@@ -244,6 +256,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     _backendIpController.dispose();
     _backendPortController.dispose();
+    _backendPasswordController.dispose();
     _dbHostController.dispose();
     _dbPortController.dispose();
     _dbUserController.dispose();
@@ -416,6 +429,18 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _backendPasswordController,
+              decoration: const InputDecoration(
+                labelText: '访问密码',
+                hintText: '后端未设置密码可留空',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
+              obscureText: true,
+              keyboardType: TextInputType.text,
+            ),
           ],
         ),
       ),
@@ -505,7 +530,7 @@ class _SettingsPageState extends State<SettingsPage> {
         description = '本地模式：所有数据将存储在设备本地，无需网络连接。';
         break;
       case ConnectionMode.backend:
-        description = '后端服务模式：通过API连接自定义后端服务器，需要配置服务器地址和端口。';
+        description = '后端服务模式：通过API连接自定义后端服务器，需要配置服务器地址和端口。若服务器启用了密码，请填写访问密码。';
         break;
       case ConnectionMode.database:
         description = '数据库直通模式：直接连接MySQL/MariaDB数据库，需要配置完整的数据库连接信息。';

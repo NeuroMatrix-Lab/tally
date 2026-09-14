@@ -7,12 +7,15 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for release'
+        description: 'Tag name for release (e.g. v1.1.2)'
         required: true
-        default: 'v1.0.0'
+        default: 'v1.1.2'
 
 permissions:
   contents: write
+
+env:
+  FLUTTER_VERSION: '3.47.4'
 
 jobs:
   build-android:
@@ -21,7 +24,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set Version
         id: set_version
         run: |
@@ -32,72 +35,53 @@ jobs:
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Using version: $VERSION"
-      
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.41.5'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
-      
+
       - name: Install dependencies
         run: flutter pub get
-      
+
       - name: Build Android Release
         run: |
           VERSION="${{ steps.set_version.outputs.version }}"
-          # 去掉标签前缀的 'v'，比如 v1.0.0 -> 1.0.0
           BUILD_NAME=$(echo $VERSION | sed 's/^v//')
-          # 构建简单的 versionCode，比如 1.0.0 -> 10000
           BUILD_NUMBER=$(echo $BUILD_NAME | awk -F. '{printf("%d%02d%02d", $1, $2, $3)}')
           echo "Building with build-name: $BUILD_NAME, build-number: $BUILD_NUMBER"
           flutter build apk --release --no-tree-shake-icons --build-name=$BUILD_NAME --build-number=$BUILD_NUMBER
           flutter build appbundle --release --no-tree-shake-icons --build-name=$BUILD_NAME --build-number=$BUILD_NUMBER
-      
-      - name: List Android build outputs
-        run: find build/app/outputs -type f
-      
-      - name: Rename APK
+
+      - name: Package Android artifacts
         run: |
           VERSION="${{ steps.set_version.outputs.version }}"
-          echo "Renaming APK with version: $VERSION"
+          mkdir -p dist/android
+
           APK_PATH=$(find build/app/outputs/flutter-apk -maxdepth 1 -name '*release*.apk' | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            echo "ERROR: APK file not found in build/app/outputs/flutter-apk"
+            echo "ERROR: APK not found"
             find build/app/outputs/flutter-apk -maxdepth 1 -type f -print
             exit 1
           fi
-          TARGET_APK=build/app/outputs/flutter-apk/tally-${VERSION}-android.apk
-          mv "$APK_PATH" "$TARGET_APK"
-          echo "APK renamed successfully to $TARGET_APK"
-      
-      - name: Rename AppBundle
-        run: |
-          VERSION="${{ steps.set_version.outputs.version }}"
-          echo "Renaming AppBundle with version: $VERSION"
+          cp "$APK_PATH" "dist/android/tally-${VERSION}-android.apk"
+
           AAB_PATH=$(find build/app/outputs/bundle/release -maxdepth 1 -name '*release*.aab' | head -n 1)
           if [ -z "$AAB_PATH" ]; then
-            echo "ERROR: AppBundle file not found in build/app/outputs/bundle/release"
+            echo "ERROR: AAB not found"
             find build/app/outputs/bundle/release -maxdepth 1 -type f -print
             exit 1
           fi
-          TARGET_AAB=build/app/outputs/bundle/release/tally-${VERSION}-android.aab
-          mv "$AAB_PATH" "$TARGET_AAB"
-          echo "AppBundle renamed successfully to $TARGET_AAB"
-      
-      - name: List renamed files
-        run: |
-          echo "=== APK files ==="
-          find build/app/outputs -name "tally-*.apk"
-          echo "=== AAB files ==="
-          find build/app/outputs -name "tally-*.aab"
-      
+          cp "$AAB_PATH" "dist/android/tally-${VERSION}-android.aab"
+
+          ls -lh dist/android/
+
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-builds
-          path: |
-            build/app/outputs/flutter-apk/tally-*.apk
-            build/app/outputs/bundle/release/tally-*.aab
+          path: dist/android/tally-*
           if-no-files-found: error
 
   build-windows:
@@ -106,7 +90,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set Version
         id: set_version
         run: |
@@ -115,39 +99,93 @@ jobs:
           } else {
             $VERSION = "${{ github.ref_name }}"
           }
-          Write-Host "version=$VERSION" >> $env:GITHUB_OUTPUT
+          "version=$VERSION" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Using version: $VERSION"
-      
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.41.5'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
-      
+
       - name: Install dependencies
         run: flutter pub get
-      
+
       - name: Build Windows Release
         run: flutter build windows --release
-      
-      - name: List Windows build outputs
-        run: Get-ChildItem -Path build\windows\x64\runner\Release -Recurse -File
-      
+
       - name: Create Windows Zip
         run: |
           $version = "${{ steps.set_version.outputs.version }}"
           $zipName = "tally-${version}-windows.zip"
           Write-Host "Creating zip: $zipName"
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\windows\$zipName
-      
-      - name: List Windows zip file
-        run: Get-ChildItem -Path build\windows -Name "tally-*.zip"
-      
+          Get-ChildItem -Path build\windows -Filter "tally-*.zip" | Format-List Name, Length
+
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-builds
           path: build/windows/tally-*.zip
+          if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set Version
+        id: set_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag_name }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS Release
+        run: |
+          VERSION="${{ steps.set_version.outputs.version }}"
+          BUILD_NAME=$(echo $VERSION | sed 's/^v//')
+          BUILD_NUMBER=$(echo $BUILD_NAME | awk -F. '{printf("%d%02d%02d", $1, $2, $3)}')
+          echo "Building macOS with build-name: $BUILD_NAME, build-number: $BUILD_NUMBER"
+          flutter build macos --release --build-name=$BUILD_NAME --build-number=$BUILD_NUMBER
+
+      - name: Package macOS app
+        run: |
+          VERSION="${{ steps.set_version.outputs.version }}"
+          APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: .app not found"
+            find build/macos/Build/Products/Release -maxdepth 2 -print
+            exit 1
+          fi
+          mkdir -p dist/macos
+          # ditto 保留 macOS 元数据，比 zip 对 .app 更友好
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "dist/macos/tally-${VERSION}-macos.zip"
+          ls -lh dist/macos/
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-builds
+          path: dist/macos/tally-*
           if-no-files-found: error
 
   build-server-rpm:
@@ -248,7 +286,7 @@ jobs:
           systemctl daemon-reload >/dev/null 2>&1 || :
 
           %preun
-          if [ "$1" -eq 0 ]; then
+          if [ "\$1" -eq 0 ]; then
             systemctl disable --now tally-server.service >/dev/null 2>&1 || :
           fi
 
@@ -263,24 +301,25 @@ jobs:
 
           rpmbuild --define "_topdir $RPM_ROOT" -bb "$RPM_ROOT/SPECS/tally-server.spec"
 
-          mkdir -p ../builds/server
-          cp "$RPM_ROOT"/RPMS/*/tally-server-*.rpm "../builds/server/tally-server-${RPM_VERSION}-linux.rpm"
+          mkdir -p dist/server
+          cp "$RPM_ROOT"/RPMS/*/tally-server-*.rpm "dist/server/tally-server-${RPM_VERSION}-linux.rpm"
+          ls -lh dist/server/
 
       - name: Upload server RPM artifact
         uses: actions/upload-artifact@v4
         with:
           name: server-rpm
-          path: builds/server/tally-server-*.rpm
+          path: dist/server/tally-server-*.rpm
           if-no-files-found: error
 
   release:
-    needs: [build-android, build-windows, build-server-rpm]
+    needs: [build-android, build-windows, build-macos, build-server-rpm]
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set Version
         id: set_version
         run: |
@@ -291,40 +330,24 @@ jobs:
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Using version: $VERSION"
-      
-      - name: Create build directories
-        run: |
-          mkdir -p builds/android
-          mkdir -p builds/windows
-          mkdir -p builds/server
-      
-      - name: Download Android Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: android-builds
-          path: builds/android
-      
-      - name: Download Windows Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-builds
-          path: builds/windows
 
-      - name: Download server RPM artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: server-rpm
-          path: builds/server
-      
-      - name: List all downloaded files
+          path: artifacts
+
+      - name: Collect release files
         run: |
-          echo "=== Android files ==="
-          find builds/android -type f -ls
-          echo "=== Windows files ==="
-          find builds/windows -type f -ls
-          echo "=== Server files ==="
-          find builds/server -type f -ls
-      
+          mkdir -p release-assets
+          find artifacts -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.zip' -o -name '*.rpm' \) -exec cp -v {} release-assets/ \;
+          echo "=== Release assets ==="
+          ls -lh release-assets/
+          COUNT=$(find release-assets -type f | wc -l)
+          if [ "$COUNT" -lt 5 ]; then
+            echo "ERROR: expected at least 5 assets, got $COUNT"
+            exit 1
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -332,14 +355,24 @@ jobs:
           name: Release ${{ steps.set_version.outputs.version }}
           draft: false
           prerelease: false
-          files: |
-            builds/android/**
-            builds/windows/**
+          files: release-assets/*
           body: |
             ## What's Changed
-            - Automatic build and release
-            
+            - Optional backend password auth (`API_PASSWORD` / config.toml)
+            - Staff/ledger incremental sync fixes (deletedStaffIds, ledger replace, UI refresh)
+            - WebSocket heartbeat for Cloudflare/proxies
+            - Safer amount decoding (DECIMAL/DOUBLE) — fixes `/records/deleted` panic
+            - Split Flutter `api_service` into focused modules
+
             ## Builds
-            - Android: APK and AppBundle
-            - Windows: Zip archive
-            - Linux server: RPM package
+            | Platform | Asset |
+            |----------|-------|
+            | Android | `tally-*-android.apk` / `.aab` |
+            | Windows | `tally-*-windows.zip` |
+            | macOS | `tally-*-macos.zip` |
+            | Linux backend | `tally-server-*-linux.rpm` |
+
+            ## Backend notes
+            - Health: `GET /api/v1/health` (no auth)
+            - Auth check: `GET /api/v1/auth`
+            - Optional password: set `API_PASSWORD` or `[server].password` in config.toml

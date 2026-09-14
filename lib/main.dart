@@ -124,7 +124,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _initSync() async {
-    // 监听同步事件
+    // 连接状态变化
     ApiService.syncStream.listen((shouldSync) {
       if (mounted) {
         setState(() {
@@ -135,6 +135,13 @@ class _HomePageState extends State<HomePage> {
           _loadStaffList();
         }
       }
+    });
+
+    // 增量同步完成后刷新 UI（WS 推送触发的同步也要刷）
+    ApiService.syncCompletedStream.listen((_) {
+      if (!mounted) return;
+      _loadRecords();
+      _loadStaffList();
     });
 
     // 连接WebSocket

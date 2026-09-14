@@ -1,96 +1,32 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:http/http.dart' as http;
+
 import 'package:mysql1/mysql1.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
+
 import '../models/record.dart';
 import '../models/staff.dart';
+import 'api_config.dart';
+import 'backend_client.dart';
+import 'connection_mode.dart';
+import 'local_database.dart';
+import 'record_mappers.dart';
+import 'sync_service.dart';
 
-enum ConnectionMode { local, backend, database }
+export 'connection_mode.dart';
 
 class ApiService {
-  static Database? _localDb;
-  static WebSocket? _webSocket;
-  static StreamSubscription? _webSocketSubscription;
-  static bool _isConnected = false;
-  static bool _syncInProgress = false;
-  static final _syncController = StreamController<bool>.broadcast();
-
-  static Stream<bool> get syncStream => _syncController.stream;
-  static bool get isConnected => _isConnected;
-
-  // 获取当前连接模式
-  static Future<ConnectionMode> _getConnectionMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    final modeIndex = prefs.getInt('connectionMode') ?? 0;
-    return ConnectionMode.values[modeIndex];
-  }
-
-  // 获取后端服务基础URL
-  static Future<String> _getBackendBaseUrl() async {
-    final prefs = await SharedPreferences.getInstance();
-    final host = prefs.getString('backendIp')?.trim() ?? '';
-    final portStr = prefs.getString('backendPort')?.trim() ?? '7378';
-
-    if (host.isEmpty) {
-      throw Exception('后端服务地址未配置，请在设置中填写');
-    }
-
-    final port = int.tryParse(portStr);
-    if (port == null || port <= 0 || port > 65535) {
-      throw Exception('后端服务端口无效，请输入 1-65535 之间的端口');
-    }
-
-    final scheme = port == 443 ? 'https' : 'http';
-    final defaultPort = port == 443 ? '' : ':$port';
-    return '$scheme://$host$defaultPort';
-  }
-
-  static Future<String> _getWebSocketUrl() async {
-    final prefs = await SharedPreferences.getInstance();
-    final host = prefs.getString('backendIp')?.trim() ?? '';
-    final portStr = prefs.getString('backendPort')?.trim() ?? '7378';
-
-    if (host.isEmpty) {
-      throw Exception('后端服务地址未配置，请在设置中填写');
-    }
-
-    final port = int.tryParse(portStr);
-    if (port == null || port <= 0 || port > 65535) {
-      throw Exception('后端服务端口无效，请输入 1-65535 之间的端口');
-    }
-
-    final scheme = port == 443 ? 'wss' : 'ws';
-    final defaultPort = port == 443 ? '' : ':$port';
-    return '$scheme://$host$defaultPort/api/v1/ws';
-  }
-
-  static Future<void> _validateDatabaseConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    final host = prefs.getString('dbHost')?.trim() ?? '';
-    final portStr = prefs.getString('dbPort')?.trim() ?? '3306';
-    final user = prefs.getString('dbUser')?.trim() ?? '';
-    final dbName = prefs.getString('dbName')?.trim() ?? '';
-
-    if (host.isEmpty || user.isEmpty || dbName.isEmpty) {
-      throw Exception('数据库直通模式请填写完整数据库连接信息（host/user/dbName）');
-    }
-
-    final port = int.tryParse(portStr);
-    if (port == null || port <= 0 || port > 65535) {
-      throw Exception('数据库端口无效，请输入 1-65535 之间的端口');
-    }
-  }
+  static Stream<bool> get syncStream => SyncService.syncStream;
+  static Stream<void> get syncCompletedStream =>
+      SyncService.syncCompletedStream;
+  static bool get isConnected => SyncService.isConnected;
 
   static Future<T> _runForMode<T>({
     required Future<T> Function() local,
     required Future<T> Function() backend,
     required Future<T> Function() database,
   }) async {
-    final mode = await _getConnectionMode();
+    final mode = await ApiConfig.getConnectionMode();
     switch (mode) {
       case ConnectionMode.local:
         return await local();
@@ -102,407 +38,40 @@ class ApiService {
   }
 
   static String serializeDateForBackend(DateTime date) {
-    return date.toUtc().toIso8601String();
+    return ApiConfig.serializeDateForBackend(date);
   }
 
-  // 获取数据库连接配置（数据库直通模式）
-  static Future<ConnectionSettings> _getDbConnectionSettings() async {
-    await _validateDatabaseConfig();
+  static Future<Database> _getLocalDb() => LocalDatabase.get();
 
-    final prefs = await SharedPreferences.getInstance();
-    final host = prefs.getString('dbHost')?.trim() ?? '';
-    final portStr = prefs.getString('dbPort')?.trim() ?? '3306';
-    final port = int.tryParse(portStr) ?? 3306;
-    final user = prefs.getString('dbUser')?.trim() ?? '';
-    final password = prefs.getString('dbPassword')?.trim() ?? '';
-    final dbName = prefs.getString('dbName')?.trim() ?? '';
-
-    return ConnectionSettings(
-      host: host,
-      port: port,
-      user: user,
-      password: password,
-      db: dbName,
-    );
-  }
-
-  // 获取本地SQLite数据库
-  static Future<Database> _getLocalDb() async {
-    if (_localDb != null) return _localDb!;
-
-    final databasesPath = await getDatabasesPath();
-    final path = join(databasesPath, 'tally.db');
-
-    _localDb = await openDatabase(
-      path,
-      version: 2,
-      onCreate: (db, version) async {
-        await _initializeDatabase(db);
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < newVersion) {
-          await _initializeDatabase(db);
-        }
-      },
-      onDowngrade: onDatabaseDowngradeDelete,
-    );
-
-    return _localDb!;
-  }
-
-  static Future<void> _initializeDatabase(Database db) async {
-    // 创建记录表
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS records (
-        id TEXT PRIMARY KEY,
-        record_id TEXT NOT NULL UNIQUE,
-        date TEXT NOT NULL,
-        category TEXT NOT NULL,
-        work_content TEXT NOT NULL,
-        amount REAL NOT NULL,
-        ledger TEXT NOT NULL,
-        image_url TEXT,
-        staff_ids TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TEXT DEFAULT NULL
-      )
-    ''');
-
-    // 创建已删除记录表
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS deleted_records (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        record_id TEXT NOT NULL,
-        date TEXT NOT NULL,
-        category TEXT NOT NULL,
-        work_content TEXT NOT NULL,
-        amount REAL NOT NULL,
-        ledger TEXT NOT NULL,
-        image_url TEXT,
-        staff_ids TEXT,
-        deleted_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    ''');
-
-    // 创建账本表
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS ledgers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE
-      )
-    ''');
-
-    // 创建人员表
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS staff (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL
-      )
-    ''');
-
-    // 插入默认账本 (仅在不存在时)
-    await db.insert('ledgers', {
-      'name': '默认账本',
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
-  }
+  static Future<ConnectionSettings> _getDbConnectionSettings() =>
+      ApiConfig.getDbConnectionSettings();
 
   // ==================== WebSocket 同步 ====================
 
-  static Future<void> connectWebSocket() async {
-    try {
-      final mode = await _getConnectionMode();
-      if (mode != ConnectionMode.backend) {
-        return;
-      }
+  static Future<void> connectWebSocket() => SyncService.connectWebSocket();
 
-      await disconnectWebSocket();
+  static Future<void> disconnectWebSocket() =>
+      SyncService.disconnectWebSocket();
 
-      final wsUrl = await _getWebSocketUrl();
-      print('WebSocket connecting to: $wsUrl');
-
-      // Windows 上使用自定义 SecurityContext 解决 SSL 问题
-      final securityContext = SecurityContext();
-      final httpClient = HttpClient(context: securityContext);
-      httpClient.badCertificateCallback = (cert, host, port) => true;
-
-      _webSocket = await WebSocket.connect(wsUrl, customClient: httpClient);
-
-      _webSocketSubscription = _webSocket?.listen(
-        (data) => _handleWebSocketMessage(data),
-        onError: (error) {
-          _isConnected = false;
-          _syncController.add(false);
-          print('WebSocket error: $error');
-        },
-        onDone: () {
-          _isConnected = false;
-          _syncController.add(false);
-          print('WebSocket disconnected');
-          // 尝试重连
-          Future.delayed(const Duration(seconds: 5), () => connectWebSocket());
-        },
-      );
-
-      _isConnected = true;
-      _syncController.add(true);
-      print('WebSocket connected');
-
-      // 连接后立即同步
-      await performIncrementalSync();
-    } catch (e) {
-      _isConnected = false;
-      _syncController.add(false);
-      print('Failed to connect to WebSocket: $e');
-      // 5秒后重连
-      Future.delayed(const Duration(seconds: 5), () => connectWebSocket());
-    }
-  }
-
-  static Future<void> disconnectWebSocket() async {
-    _webSocketSubscription?.cancel();
-    _webSocketSubscription = null;
-    if (_webSocket != null) {
-      await _webSocket!.close();
-      _webSocket = null;
-    }
-    _isConnected = false;
-    _syncController.add(false);
-  }
-
-  static void _handleWebSocketMessage(dynamic data) {
-    try {
-      if (data == null || data.toString().isEmpty) return;
-      final message = json.decode(data);
-      final entityType = message['entity_type'];
-      final eventType = message['event_type'];
-
-      print('Received sync event: $eventType for $entityType');
-
-      // 触发同步
-      performIncrementalSync();
-    } catch (e) {
-      print('Error handling WebSocket message: $e');
-    }
-  }
-
-  // ==================== 增量同步 ====================
-
-  static Future<void> performIncrementalSync() async {
-    if (_syncInProgress) {
-      print(
-        'DEBUG: skip duplicate incremental sync while another sync is still running',
-      );
-      return;
-    }
-
-    _syncInProgress = true;
-    print('DEBUG: start incremental sync');
-
-    try {
-      final mode = await _getConnectionMode();
-      if (mode != ConnectionMode.backend) {
-        print(
-          'DEBUG: incremental sync skipped because current mode is not backend',
-        );
-        return;
-      }
-
-      final prefs = await SharedPreferences.getInstance();
-      final lastSync = prefs.getString('lastSyncTime');
-      print('DEBUG: lastSyncTime=$lastSync');
-
-      final baseUrl = await _getBackendBaseUrl();
-      print('DEBUG: syncing with backend url=$baseUrl');
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/v1/sync'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'lastSyncTime': lastSync}),
-      );
-
-      print(
-        'DEBUG: sync response status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final data = json.decode(response.body);
-        await _applySyncChanges(data);
-
-        final serverTime = data['serverTime']?.toString();
-        if (serverTime != null && serverTime.isNotEmpty) {
-          await prefs.setString('lastSyncTime', serverTime);
-        }
-        print('DEBUG: sync completed successfully, serverTime=$serverTime');
-      } else {
-        print('DEBUG: sync request failed with status=${response.statusCode}');
-      }
-    } catch (e) {
-      print('DEBUG: incremental sync failed: $e');
-    } finally {
-      _syncInProgress = false;
-      print('DEBUG: incremental sync complete');
-    }
-  }
-
-  static Future<void> _applySyncChanges(Map<String, dynamic> data) async {
-    final db = await _getLocalDb();
-    final batch = db.batch();
-
-    // 处理记录
-    final records = data['records'] as List? ?? [];
-    for (final recordJson in records) {
-      final record = Record.fromMap(recordJson);
-      batch.insert('records', {
-        'id': record.id,
-        'record_id': record.id,
-        'date': record.date.toIso8601String(),
-        'category': record.category,
-        'work_content': record.workContent,
-        'amount': record.amount,
-        'ledger': record.ledger,
-        'image_url': record.imageUrl,
-        'staff_ids': json.encode(record.staffIds),
-        'updated_at': DateTime.now().toIso8601String(),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-
-    // 处理删除的记录
-    final deletedRecordIds = data['deletedRecordIds'] as List? ?? [];
-    for (final id in deletedRecordIds) {
-      batch.delete('records', where: 'record_id = ?', whereArgs: [id]);
-    }
-
-    // 处理人员
-    final staffList = data['staff'] as List? ?? [];
-    for (final staffJson in staffList) {
-      final staff = Staff.fromMap(staffJson);
-      batch.insert('staff', {
-        'id': int.tryParse(staff.id) ?? 0,
-        'name': staff.name,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-
-    // 处理账本
-    final ledgers = data['ledgers'] as List? ?? [];
-    for (final ledger in ledgers) {
-      batch.insert('ledgers', {
-        'name': ledger,
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    }
-
-    await batch.commit(noResult: true);
-  }
+  static Future<void> performIncrementalSync() =>
+      SyncService.performIncrementalSync();
 
   // ==================== HTTP API 调用（后端服务模式）====================
 
-  // HTTP GET 请求
-  static Future<dynamic> _httpGet(String endpoint) async {
-    final baseUrl = await _getBackendBaseUrl();
-    final uri = Uri.parse('$baseUrl$endpoint');
+  static Future<dynamic> _httpGet(String endpoint) =>
+      BackendClient.get(endpoint);
 
-    try {
-      final response = await http
-          .get(uri, headers: {'Content-Type': 'application/json'})
-          .timeout(const Duration(seconds: 12));
+  static Future<dynamic> _httpPost(String endpoint, dynamic body) =>
+      BackendClient.post(endpoint, body);
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return json.decode(response.body);
-      } else {
-        throw Exception('HTTP ${response.statusCode}: ${response.body}');
-      }
-    } on TimeoutException {
-      throw Exception('请求超时，请检查后端服务是否可访问');
-    } on SocketException catch (e) {
-      throw Exception('网络异常：$e');
-    } catch (e) {
-      throw Exception('请求失败：$e');
-    }
-  }
+  static Future<dynamic> _httpPut(String endpoint, dynamic body) =>
+      BackendClient.put(endpoint, body);
 
-  // HTTP POST 请求
-  static Future<dynamic> _httpPost(String endpoint, dynamic body) async {
-    final baseUrl = await _getBackendBaseUrl();
-    final uri = Uri.parse('$baseUrl$endpoint');
-
-    try {
-      final response = await http
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode(body),
-          )
-          .timeout(const Duration(seconds: 12));
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        if (response.body.isEmpty) return null;
-        return json.decode(response.body);
-      } else {
-        throw Exception('HTTP ${response.statusCode}: ${response.body}');
-      }
-    } on TimeoutException {
-      throw Exception('请求超时，请检查后端服务是否可访问');
-    } on SocketException catch (e) {
-      throw Exception('网络异常：$e');
-    } catch (e) {
-      throw Exception('请求失败：$e');
-    }
-  }
-
-  // HTTP PUT 请求
-  static Future<dynamic> _httpPut(String endpoint, dynamic body) async {
-    final baseUrl = await _getBackendBaseUrl();
-    final uri = Uri.parse('$baseUrl$endpoint');
-
-    try {
-      final response = await http
-          .put(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode(body),
-          )
-          .timeout(const Duration(seconds: 12));
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        if (response.body.isEmpty) return null;
-        return json.decode(response.body);
-      } else {
-        throw Exception('HTTP ${response.statusCode}: ${response.body}');
-      }
-    } on TimeoutException {
-      throw Exception('请求超时，请检查后端服务是否可访问');
-    } on SocketException catch (e) {
-      throw Exception('网络异常：$e');
-    } catch (e) {
-      throw Exception('请求失败：$e');
-    }
-  }
-
-  // HTTP DELETE 请求
-  static Future<void> _httpDelete(String endpoint) async {
-    final baseUrl = await _getBackendBaseUrl();
-    final uri = Uri.parse('$baseUrl$endpoint');
-
-    try {
-      final response = await http
-          .delete(uri, headers: {'Content-Type': 'application/json'})
-          .timeout(const Duration(seconds: 12));
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('HTTP ${response.statusCode}: ${response.body}');
-      }
-    } on TimeoutException {
-      throw Exception('请求超时，请检查后端服务是否可访问');
-    } on SocketException catch (e) {
-      throw Exception('网络异常：$e');
-    } catch (e) {
-      throw Exception('请求失败：$e');
-    }
-  }
+  static Future<void> _httpDelete(String endpoint) =>
+      BackendClient.delete(endpoint);
 
   // ==================== 记录操作 ====================
 
-  // 获取所有记录
   static Future<List<Record>> getAllRecords() async {
     return _runForMode(
       local: _getAllRecordsLocal,
@@ -518,7 +87,7 @@ class ApiService {
       where: 'deleted_at IS NULL',
       orderBy: 'date DESC',
     );
-    return results.map((row) => _recordFromMap(row)).toList();
+    return results.map((row) => RecordMappers.fromLocalMap(row)).toList();
   }
 
   static Future<List<Record>> _getAllRecordsBackend() async {
@@ -531,18 +100,17 @@ class ApiService {
     final conn = await MySqlConnection.connect(settings);
     try {
       final results = await conn.query('''
-        SELECT * FROM records 
-        WHERE deleted_at IS NULL 
+        SELECT * FROM records
+        WHERE deleted_at IS NULL
         ORDER BY date DESC
       ''');
 
-      return results.map((row) => _recordFromDbRow(row)).toList();
+      return results.map((row) => RecordMappers.fromDbRow(row)).toList();
     } finally {
       await conn.close();
     }
   }
 
-  // 获取最近记录
   static Future<List<Record>> getRecentRecords({int months = 3}) async {
     return _runForMode(
       local: () => _getRecentRecordsLocal(months),
@@ -560,7 +128,7 @@ class ApiService {
       whereArgs: [cutoffDate.toIso8601String()],
       orderBy: 'date DESC',
     );
-    return results.map((row) => _recordFromMap(row)).toList();
+    return results.map((row) => RecordMappers.fromLocalMap(row)).toList();
   }
 
   static Future<List<Record>> _getRecentRecordsBackend(int months) async {
@@ -574,21 +142,20 @@ class ApiService {
     try {
       final results = await conn.query(
         '''
-        SELECT * FROM records 
-        WHERE deleted_at IS NULL 
+        SELECT * FROM records
+        WHERE deleted_at IS NULL
         AND date >= DATE_SUB(NOW(), INTERVAL ? MONTH)
         ORDER BY date DESC
       ''',
         [months],
       );
 
-      return results.map((row) => _recordFromDbRow(row)).toList();
+      return results.map((row) => RecordMappers.fromDbRow(row)).toList();
     } finally {
       await conn.close();
     }
   }
 
-  // 搜索记录
   static Future<List<Record>> searchRecords({
     required DateTime startDate,
     required DateTime endDate,
@@ -629,7 +196,7 @@ class ApiService {
       whereArgs: whereArgs,
       orderBy: 'date DESC',
     );
-    return results.map((row) => _recordFromMap(row)).toList();
+    return results.map((row) => RecordMappers.fromLocalMap(row)).toList();
   }
 
   static Future<List<Record>> _searchRecordsBackend(
@@ -657,7 +224,7 @@ class ApiService {
     final conn = await MySqlConnection.connect(settings);
     try {
       var query = '''
-        SELECT * FROM records 
+        SELECT * FROM records
         WHERE deleted_at IS NULL AND date BETWEEN ? AND ?
       ''';
       var params = [startDate.toIso8601String(), endDate.toIso8601String()];
@@ -673,13 +240,12 @@ class ApiService {
       query += ' ORDER BY date DESC';
 
       final results = await conn.query(query, params);
-      return results.map((row) => _recordFromDbRow(row)).toList();
+      return results.map((row) => RecordMappers.fromDbRow(row)).toList();
     } finally {
       await conn.close();
     }
   }
 
-  // 创建记录
   static Future<Record> createRecord(Record record) async {
     return _runForMode(
       local: () => _createRecordLocal(record),
@@ -748,7 +314,6 @@ class ApiService {
     }
   }
 
-  // 更新记录
   static Future<Record> updateRecord(Record record) async {
     return _runForMode(
       local: () => _updateRecordLocal(record),
@@ -800,7 +365,7 @@ class ApiService {
     try {
       await conn.query(
         '''
-        UPDATE records 
+        UPDATE records
         SET date = ?, category = ?, work_content = ?, amount = ?, ledger = ?, image_url = ?, staff_ids = ?
         WHERE record_id = ? AND deleted_at IS NULL
       ''',
@@ -821,7 +386,6 @@ class ApiService {
     }
   }
 
-  // 删除记录
   static Future<void> deleteRecord(String recordId) async {
     await _runForMode(
       local: () => _deleteRecordLocal(recordId),
@@ -842,7 +406,6 @@ class ApiService {
     );
 
     if (record.isNotEmpty) {
-      // 插入到deleted_records
       await db.insert('deleted_records', {
         'record_id': record.first['record_id'],
         'date': record.first['date'],
@@ -854,7 +417,6 @@ class ApiService {
         'staff_ids': record.first['staff_ids'],
       });
 
-      // 软删除
       await db.update(
         'records',
         {'deleted_at': DateTime.now().toIso8601String()},
@@ -872,7 +434,6 @@ class ApiService {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      // 获取记录
       final results = await conn.query(
         'SELECT * FROM records WHERE record_id = ?',
         [recordId],
@@ -880,7 +441,6 @@ class ApiService {
 
       if (results.isNotEmpty) {
         final row = results.first;
-        // 插入到deleted_records
         await conn.query(
           '''
           INSERT INTO deleted_records (record_id, date, category, work_content, amount, ledger, image_url, staff_ids, deleted_at)
@@ -898,7 +458,6 @@ class ApiService {
           ],
         );
 
-        // 软删除
         await conn.query(
           'UPDATE records SET deleted_at = NOW() WHERE record_id = ?',
           [recordId],
@@ -909,7 +468,6 @@ class ApiService {
     }
   }
 
-  // 获取已删除记录
   static Future<List<Record>> getDeletedRecords() async {
     return _runForMode(
       local: _getDeletedRecordsLocal,
@@ -924,7 +482,7 @@ class ApiService {
       'deleted_records',
       orderBy: 'deleted_at DESC',
     );
-    return results.map((row) => _recordFromDeletedMap(row)).toList();
+    return results.map((row) => RecordMappers.fromDeletedMap(row)).toList();
   }
 
   static Future<List<Record>> _getDeletedRecordsBackend() async {
@@ -937,16 +495,15 @@ class ApiService {
     final conn = await MySqlConnection.connect(settings);
     try {
       final results = await conn.query('''
-        SELECT * FROM deleted_records 
+        SELECT * FROM deleted_records
         ORDER BY deleted_at DESC
       ''');
-      return results.map((row) => _recordFromDbRow(row)).toList();
+      return results.map((row) => RecordMappers.fromDbRow(row)).toList();
     } finally {
       await conn.close();
     }
   }
 
-  // 恢复已删除记录
   static Future<void> restoreRecord(String recordId) async {
     await _runForMode(
       local: () => _restoreRecordLocal(recordId),
@@ -967,7 +524,6 @@ class ApiService {
     );
 
     if (deletedRecord.isNotEmpty) {
-      // 恢复记录
       await db.insert('records', {
         'id': deletedRecord.first['record_id'],
         'record_id': deletedRecord.first['record_id'],
@@ -980,7 +536,6 @@ class ApiService {
         'staff_ids': deletedRecord.first['staff_ids'],
       });
 
-      // 从deleted_records删除
       await db.delete(
         'deleted_records',
         where: 'record_id = ?',
@@ -1031,7 +586,6 @@ class ApiService {
     }
   }
 
-  // 永久删除记录
   static Future<void> permanentlyDeleteRecord(String recordId) async {
     await _runForMode(
       local: () => _permanentlyDeleteRecordLocal(recordId),
@@ -1211,16 +765,13 @@ class ApiService {
 
   static Future<void> _deleteLedgerLocal(String name) async {
     final db = await _getLocalDb();
-    // 先删除该账本下的所有记录
     await db.delete('records', where: 'ledger = ?', whereArgs: [name]);
     await db.delete('ledgers', where: 'name = ?', whereArgs: [name]);
   }
 
   static Future<void> _deleteLedgerBackend(String name) async {
-    // 先获取该账本下的所有记录
     final records = await _getAllRecordsBackend();
     final ledgerRecords = records.where((r) => r.ledger == name).toList();
-    // 逐条删除记录
     for (final record in ledgerRecords) {
       await _deleteRecordBackend(record.id);
     }
@@ -1231,7 +782,6 @@ class ApiService {
     final settings = await _getDbConnectionSettings();
     final conn = await MySqlConnection.connect(settings);
     try {
-      // 先删除该账本下的所有记录
       await conn.query('DELETE FROM records WHERE ledger = ?', [name]);
       await conn.query('DELETE FROM ledgers WHERE name = ?', [name]);
     } finally {
@@ -1411,8 +961,8 @@ class ApiService {
   static Future<List<String>> _getWorkContentsLocal() async {
     final db = await _getLocalDb();
     final results = await db.rawQuery('''
-      SELECT DISTINCT work_content FROM records 
-      WHERE deleted_at IS NULL 
+      SELECT DISTINCT work_content FROM records
+      WHERE deleted_at IS NULL
       ORDER BY work_content
     ''');
     return results.map((row) => row['work_content'] as String).toList();
@@ -1428,8 +978,8 @@ class ApiService {
     final conn = await MySqlConnection.connect(settings);
     try {
       final results = await conn.query('''
-        SELECT DISTINCT work_content FROM records 
-        WHERE deleted_at IS NULL 
+        SELECT DISTINCT work_content FROM records
+        WHERE deleted_at IS NULL
         ORDER BY work_content
       ''');
       return results.map((row) => row['work_content'] as String).toList();
@@ -1449,8 +999,8 @@ class ApiService {
   static Future<List<String>> _getCategoriesLocal() async {
     final db = await _getLocalDb();
     final results = await db.rawQuery('''
-      SELECT DISTINCT category FROM records 
-      WHERE deleted_at IS NULL 
+      SELECT DISTINCT category FROM records
+      WHERE deleted_at IS NULL
       ORDER BY category
     ''');
     return results.map((row) => row['category'] as String).toList();
@@ -1466,8 +1016,8 @@ class ApiService {
     final conn = await MySqlConnection.connect(settings);
     try {
       final results = await conn.query('''
-        SELECT DISTINCT category FROM records 
-        WHERE deleted_at IS NULL 
+        SELECT DISTINCT category FROM records
+        WHERE deleted_at IS NULL
         ORDER BY category
       ''');
       return results.map((row) => row['category'] as String).toList();
@@ -1490,103 +1040,11 @@ class ApiService {
     return dataUrl;
   }
 
-  // ==================== 辅助方法 ====================
-
-  static Record _recordFromMap(Map<String, dynamic> row) {
-    List<String> staffIds = [];
-    if (row['staff_ids'] != null) {
-      try {
-        staffIds = List<String>.from(json.decode(row['staff_ids'] as String));
-      } catch (e) {
-        staffIds = [];
-      }
-    }
-
-    return Record.fromMap({
-      'id': row['record_id']?.toString() ?? row['id'].toString(),
-      'recordId': row['record_id']?.toString() ?? '',
-      'date': row['date'],
-      'category': row['category'],
-      'workContent': row['work_content'],
-      'amount': row['amount'],
-      'ledger': row['ledger'],
-      'imageUrl': row['image_url'],
-      'staffIds': staffIds,
-    });
-  }
-
-  static Record _recordFromDeletedMap(Map<String, dynamic> row) {
-    List<String> staffIds = [];
-    if (row['staff_ids'] != null) {
-      try {
-        staffIds = List<String>.from(json.decode(row['staff_ids'] as String));
-      } catch (e) {
-        staffIds = [];
-      }
-    }
-
-    return Record.fromMap({
-      'id': row['record_id']?.toString() ?? row['id'].toString(),
-      'recordId': row['record_id']?.toString() ?? '',
-      'date': row['date'],
-      'category': row['category'],
-      'workContent': row['work_content'],
-      'amount': row['amount'],
-      'ledger': row['ledger'],
-      'imageUrl': row['image_url'],
-      'staffIds': staffIds,
-    });
-  }
-
-  static Record _recordFromDbRow(dynamic row) {
-    String dateString;
-    if (row['date'] is DateTime) {
-      dateString = (row['date'] as DateTime).toIso8601String();
-    } else {
-      dateString = row['date'].toString();
-    }
-
-    double amount;
-    if (row['amount'] is double) {
-      amount = row['amount'];
-    } else if (row['amount'] is int) {
-      amount = (row['amount'] as int).toDouble();
-    } else {
-      amount = double.tryParse(row['amount'].toString()) ?? 0.0;
-    }
-
-    List<String> staffIds = [];
-    if (row['staff_ids'] != null) {
-      try {
-        final staffIdsStr = row['staff_ids'].toString();
-        if (staffIdsStr.isNotEmpty) {
-          staffIds = List<String>.from(json.decode(staffIdsStr));
-        }
-      } catch (e) {
-        staffIds = [];
-      }
-    }
-
-    return Record.fromMap({
-      'id': row['record_id']?.toString() ?? row['id'].toString(),
-      'recordId': row['record_id']?.toString() ?? '',
-      'date': dateString,
-      'category': row['category']?.toString() ?? '',
-      'workContent': row['work_content']?.toString() ?? '',
-      'amount': amount,
-      'ledger': row['ledger']?.toString() ?? '',
-      'imageUrl': row['image_url']?.toString(),
-      'staffIds': staffIds,
-    });
-  }
-
-  // 恢复已删除记录（别名方法，与main.dart中的调用匹配）
   static Future<void> restoreDeletedRecord(String recordId) async {
     return await restoreRecord(recordId);
   }
 
   static void dispose() {
-    _syncController.close();
-    disconnectWebSocket();
+    SyncService.dispose();
   }
 }

@@ -24,6 +24,7 @@ Flutter 前端 + Rust 后端，支持多设备同步。
 下载对应平台的安装包：
 - Android — APK 或 AAB（应用商店）
 - Windows — ZIP 解压即用
+- macOS — ZIP 解压后运行 .app
 - Linux 后端 — RPM 包，安装后可使用 systemd 运行
 
 
@@ -33,7 +34,10 @@ Flutter 前端 + Rust 后端，支持多设备同步。
 export DB_HOST=127.0.0.1
 export DB_PORT=3306
 export DB_USER=你的用户名
-export DB_PASSWORD=*** DB_NAME=你的数据库名
+export DB_PASSWORD=***
+export DB_NAME=你的数据库名
+# 可选：API 访问密码
+# export API_PASSWORD=your-password
 
 cd server && cargo run
 ```
@@ -74,7 +78,8 @@ docker run -d \
 所有接口前缀 `/api/v1`
 
 ```
-GET    /health                    健康检查
+GET    /health                    健康检查（免鉴权）
+GET    /auth                      鉴权检查（若后端设置了密码需携带）
 GET    /records                   所有记录
 GET    /records/recent?months=N   最近 N 月
 POST   /records                   新建记录
@@ -99,10 +104,19 @@ GET    /work-contents             工作内容
 GET    /categories                类别
 ```
 
+后端可在 `config.toml` 的 `[server].password`（或环境变量 `API_PASSWORD`）设置访问密码。设置后除 `/health` 外需带 `X-Api-Password`（或 `Authorization: Bearer`）请求头；WebSocket 用 `?password=`。客户端在设置页填写同一密码。
+
 
 ## CI
 
-推 tag `v*.*.*` 或手动触发，自动构建 Android、Windows 和 Linux 后端 RPM，并发布到 GitHub Release。
+推 tag `v*.*.*`（例如 `v1.1.2`）或手动触发，自动构建并发布：
+
+- Android APK + AAB
+- Windows ZIP
+- macOS ZIP
+- Linux 后端 RPM（systemd）
+
+产物会挂到 GitHub Release。
 
 
 ## 项目结构
@@ -112,7 +126,7 @@ lib/                  Flutter 前端
   main.dart           入口
   models/             数据模型
   pages/              页面
-  services/           API 服务
+  services/           API 服务（config / HTTP / 同步 / 本地库已拆分）
   widgets/            组件
 
 server/               Rust 后端

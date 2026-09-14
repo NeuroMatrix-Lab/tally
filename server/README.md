@@ -11,16 +11,14 @@
 
 ```bash
 cd server
- export DB_HOST=127.0.0.1
- export DB_PORT=3306
- export DB_USER=tally_user
- export DB_PASSWORD=数据库密码
- export DB_NAME=tally
+cat > .env <<'EOF'
 DB_NAME=tally
 DB_USER=tally_user
 DB_PASSWORD=请替换为数据库密码
 MYSQL_ROOT_PASSWORD=请替换为root密码
 PORT=7378
+# 可选：API 访问密码，留空则不启用鉴权
+# API_PASSWORD=请替换为访问密码
 EOF
 
 docker compose up -d --build
@@ -78,12 +76,39 @@ cd server
 cargo run
 ```
 
-需要设置数据库连接：
+需要设置数据库连接（也可直接改 `config.toml`）：
 
 ```bash
-export DATABASE_URL=mysql://user:password@host:3306/tally
+export DB_HOST=127.0.0.1
+export DB_PORT=3306
+export DB_USER=tally_user
+export DB_PASSWORD=数据库密码
+export DB_NAME=tally
 export PORT=7378
+# 可选：API 访问密码，留空则不启用鉴权
+# export API_PASSWORD=your-password
 ```
+
+### 访问密码（可选）
+
+`config.toml` 的 `[server].password`，或环境变量 `API_PASSWORD`：
+
+- 留空：不启用鉴权，行为与之前一致
+- 设置后：除 `GET /api/v1/health` 外，所有接口都需要密码
+  - HTTP：请求头 `X-Api-Password: <密码>`，或 `Authorization: Bearer <密码>`
+  - WebSocket：连接串追加 `?password=<密码>`
+  - 校验接口：`GET /api/v1/auth`（需带密码；返回 `{"authRequired":true/false,"status":"ok"}`）
+
+客户端在「设置 → 后端服务模式 → 访问密码」中填写同一密码。
+
+## Cloudflare 部署注意
+
+通过 Cloudflare Tunnel / 反代时，同步相关建议：
+
+1. **WebSocket 必须放行**（客户端会连 `wss://host/api/v1/ws`，并每 30 秒发一次心跳）
+2. **不要缓存 API**：对该主机名关闭 Cache Everything / 对 `/api/*` 设 Bypass，否则 GET 可能拿到旧数据
+3. **不要用 Cloudflare Access 挡住 API**（除非你只走浏览器）；App 密码用本服务的 `API_PASSWORD` 即可
+4. 增量同步时间戳按 MySQL 秒级精度对齐，同一秒内的人员/账本变更也会带上
 
 ## 数据库初始化
 程序会在首次运行时自动创建所需的表结构。
