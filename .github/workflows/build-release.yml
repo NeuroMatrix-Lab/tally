@@ -301,9 +301,19 @@ jobs:
 
           rpmbuild --define "_topdir $RPM_ROOT" -bb "$RPM_ROOT/SPECS/tally-server.spec"
 
-          mkdir -p dist/server
-          cp "$RPM_ROOT"/RPMS/*/tally-server-*.rpm "dist/server/tally-server-${RPM_VERSION}-linux.rpm"
-          ls -lh dist/server/
+          echo "=== rpmbuild outputs ==="
+          find "$RPM_ROOT/RPMS" -type f -ls || true
+
+          OUT_DIR="${{ github.workspace }}/dist/server"
+          mkdir -p "$OUT_DIR"
+          RPM_SRC=$(find "$RPM_ROOT/RPMS" -type f -name 'tally-server-*.rpm' | head -n 1)
+          if [ -z "$RPM_SRC" ]; then
+            echo "ERROR: no RPM produced by rpmbuild"
+            find "$RPM_ROOT" -type f -ls || true
+            exit 1
+          fi
+          cp "$RPM_SRC" "$OUT_DIR/tally-server-${RPM_VERSION}-linux.rpm"
+          ls -lh "$OUT_DIR"
 
       - name: Upload server RPM artifact
         uses: actions/upload-artifact@v4
