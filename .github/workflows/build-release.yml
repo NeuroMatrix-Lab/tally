@@ -167,7 +167,7 @@ jobs:
           echo "Building macOS with build-name: $BUILD_NAME, build-number: $BUILD_NUMBER"
           flutter build macos --release --build-name=$BUILD_NAME --build-number=$BUILD_NUMBER
 
-      - name: Package macOS app
+      - name: Package macOS DMG
         run: |
           VERSION="${{ steps.set_version.outputs.version }}"
           APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' | head -n 1)
@@ -177,9 +177,19 @@ jobs:
             exit 1
           fi
           mkdir -p dist/macos
-          # ditto 保留 macOS 元数据，比 zip 对 .app 更友好
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "dist/macos/tally-${VERSION}-macos.zip"
+          DMG_PATH="dist/macos/tally-${VERSION}-macos.dmg"
+          STAGING=$(mktemp -d)
+          cp -R "$APP_PATH" "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+          hdiutil create \
+            -volname "Tally" \
+            -srcfolder "$STAGING" \
+            -ov \
+            -format UDZO \
+            "$DMG_PATH"
+          rm -rf "$STAGING"
           ls -lh dist/macos/
+          hdiutil imageinfo "$DMG_PATH" | head -20
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
@@ -349,7 +359,7 @@ jobs:
       - name: Collect release files
         run: |
           mkdir -p release-assets
-          find artifacts -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.zip' -o -name '*.rpm' \) -exec cp -v {} release-assets/ \;
+          find artifacts -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.zip' -o -name '*.dmg' -o -name '*.rpm' \) -exec cp -v {} release-assets/ \;
           echo "=== Release assets ==="
           ls -lh release-assets/
           COUNT=$(find release-assets -type f | wc -l)
@@ -379,7 +389,7 @@ jobs:
             |----------|-------|
             | Android | `tally-*-android.apk` / `.aab` |
             | Windows | `tally-*-windows.zip` |
-            | macOS | `tally-*-macos.zip` |
+            | macOS | `tally-*-macos.dmg` |
             | Linux backend | `tally-server-*-linux.rpm` |
 
             ## Backend notes

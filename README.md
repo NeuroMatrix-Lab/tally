@@ -24,7 +24,7 @@ Flutter 前端 + Rust 后端，支持多设备同步。
 下载对应平台的安装包：
 - Android — APK 或 AAB（应用商店）
 - Windows — ZIP 解压即用
-- macOS — ZIP 解压后运行 .app
+- macOS — DMG 安装（拖到 Applications）
 - Linux 后端 — RPM 包，安装后可使用 systemd 运行
 
 
@@ -113,7 +113,7 @@ GET    /categories                类别
 
 - Android APK + AAB
 - Windows ZIP
-- macOS ZIP
+- macOS DMG
 - Linux 后端 RPM（systemd）
 
 产物会挂到 GitHub Release。
