@@ -13,6 +13,7 @@ import 'pages/operation_log_page.dart';
 import 'pages/recycle_bin_page.dart';
 import 'pages/account_check_page.dart';
 import 'services/api_service.dart';
+import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,20 +42,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Tally',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      // 这套配色以深色为主，默认跟随系统；也可改成 ThemeMode.dark 强制深色
       themeMode: ThemeMode.system,
       builder: (context, child) {
         return MediaQuery(
@@ -406,7 +396,7 @@ class _HomePageState extends State<HomePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('✅ 记录已更新并同步到服务器'),
-            backgroundColor: Colors.green,
+            backgroundColor: AppColors.green,
           ),
         );
       }
@@ -416,7 +406,7 @@ class _HomePageState extends State<HomePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ 记录更新失败: ${e.toString().split(':').first}'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.red,
           ),
         );
       }
@@ -466,7 +456,7 @@ class _HomePageState extends State<HomePage> {
                 child: Icon(
                   _isServerConnected ? Icons.cloud_done : Icons.cloud_off,
                   size: 20,
-                  color: _isServerConnected ? Colors.green : Colors.red,
+                  color: _isServerConnected ? AppColors.success : AppColors.error,
                 ),
               ),
           ],

@@ -902,7 +902,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                 SnackBar(content: Text('已删除记录: ${record.workContent}')),
               );
             },
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
+            child: Text('删除', style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ),
         ],
       ),

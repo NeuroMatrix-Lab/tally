@@ -162,7 +162,7 @@ class _StaffSelectionPageState extends State<StaffSelectionPage> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
             child: const Text('删除'),
           ),
         ],
@@ -239,7 +239,7 @@ class _StaffSelectionPageState extends State<StaffSelectionPage> {
               tooltip: '编辑',
             ),
             IconButton(
-              icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+              icon: Icon(Icons.delete, size: 20, color: Theme.of(context).colorScheme.error),
               onPressed: () => _deleteStaff(staff),
               tooltip: '删除',
             ),
@@ -278,10 +278,10 @@ class _StaffSelectionPageState extends State<StaffSelectionPage> {
           ),
           Expanded(
             child: _localStaffList.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
                       '暂无人员，请点击右下角加号添加',
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   )
                 : ListView.builder(

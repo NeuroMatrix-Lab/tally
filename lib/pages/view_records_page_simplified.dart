@@ -129,7 +129,7 @@ class _ViewRecordsPageSimplifiedState extends State<ViewRecordsPageSimplified> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey),
+          border: Border.all(color: Theme.of(context).colorScheme.onSurfaceVariant),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -140,7 +140,7 @@ class _ViewRecordsPageSimplifiedState extends State<ViewRecordsPageSimplified> {
                 displayLedger,
                 style: TextStyle(
                   fontSize: 14,
-                  color: displayLedger == '全部账本' ? Colors.grey : Colors.black,
+                  color: displayLedger == '全部账本' ? Theme.of(context).colorScheme.onSurfaceVariant : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
             ),
@@ -168,7 +168,7 @@ class _ViewRecordsPageSimplifiedState extends State<ViewRecordsPageSimplified> {
                   return ListTile(
                     title: const Text('全部账本'),
                     trailing: _selectedLedger == null
-                        ? const Icon(Icons.check, color: Colors.green)
+                        ? Icon(Icons.check, color: Theme.of(context).colorScheme.secondary)
                         : null,
                     onTap: () {
                       setState(() {
@@ -179,8 +179,8 @@ class _ViewRecordsPageSimplifiedState extends State<ViewRecordsPageSimplified> {
                   );
                 }
                 return ListTile(
-                  leading: const Icon(Icons.settings, color: Colors.orange),
-                  title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
+                  leading: Icon(Icons.settings, color: Theme.of(context).colorScheme.tertiary),
+                  title: Text('管理账本', style: TextStyle(color: Theme.of(context).colorScheme.tertiary)),
                   onTap: () async {
                     Navigator.pop(context);
                     await Navigator.push(
@@ -200,7 +200,7 @@ class _ViewRecordsPageSimplifiedState extends State<ViewRecordsPageSimplified> {
                   return ListTile(
                     title: const Text('全部账本'),
                     trailing: _selectedLedger == null
-                        ? const Icon(Icons.check, color: Colors.green)
+                        ? Icon(Icons.check, color: Theme.of(context).colorScheme.secondary)
                         : null,
                     onTap: () {
                       setState(() {
@@ -212,8 +212,8 @@ class _ViewRecordsPageSimplifiedState extends State<ViewRecordsPageSimplified> {
                 }
                 if (index == widget.ledgers.length + 1) {
                   return ListTile(
-                    leading: const Icon(Icons.settings, color: Colors.orange),
-                    title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
+                    leading: Icon(Icons.settings, color: Theme.of(context).colorScheme.tertiary),
+                    title: Text('管理账本', style: TextStyle(color: Theme.of(context).colorScheme.tertiary)),
                     onTap: () async {
                       Navigator.pop(context);
                       await Navigator.push(
@@ -233,7 +233,7 @@ class _ViewRecordsPageSimplifiedState extends State<ViewRecordsPageSimplified> {
                 return ListTile(
                   title: Text(ledger),
                   trailing: _selectedLedger == ledger
-                      ? const Icon(Icons.check, color: Colors.green)
+                      ? Icon(Icons.check, color: Theme.of(context).colorScheme.secondary)
                       : null,
                   onTap: () {
                     setState(() {

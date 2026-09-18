@@ -188,8 +188,8 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
             itemBuilder: (context, index) {
               if (widget.ledgers.isEmpty) {
                 return ListTile(
-                    leading: const Icon(Icons.settings, color: Colors.orange),
-                    title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
+                    leading: Icon(Icons.settings, color: Theme.of(context).colorScheme.tertiary),
+                    title: Text('管理账本', style: TextStyle(color: Theme.of(context).colorScheme.tertiary)),
                     onTap: () async {
                       Navigator.pop(context);
                       await Navigator.push(
@@ -213,7 +213,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                     return ListTile(
                       title: const Text('全部账本'),
                       trailing: _selectedLedger == null
-                          ? const Icon(Icons.check, color: Colors.green)
+                          ? Icon(Icons.check, color: Theme.of(context).colorScheme.secondary)
                           : null,
                       onTap: () {
                         setState(() {
@@ -225,8 +225,8 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                   }
                   if (index == widget.ledgers.length + 1) {
                     return ListTile(
-                      leading: const Icon(Icons.settings, color: Colors.orange),
-                      title: const Text('管理账本', style: TextStyle(color: Colors.orange)),
+                      leading: Icon(Icons.settings, color: Theme.of(context).colorScheme.tertiary),
+                      title: Text('管理账本', style: TextStyle(color: Theme.of(context).colorScheme.tertiary)),
                       onTap: () async {
                         Navigator.pop(context);
                         await Navigator.push(
@@ -250,7 +250,7 @@ class _ViewRecordsPageState extends State<ViewRecordsPage> {
                   return ListTile(
                     title: Text(ledger),
                     trailing: _selectedLedger == ledger
-                        ? const Icon(Icons.check, color: Colors.green)
+                        ? Icon(Icons.check, color: Theme.of(context).colorScheme.secondary)
                         : null,
                   onTap: () {
                     setState(() {

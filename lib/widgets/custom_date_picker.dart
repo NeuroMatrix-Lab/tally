@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class CustomDatePicker extends StatefulWidget {
   final DateTime initialDate;
   final DateTime firstDate;
@@ -125,7 +127,7 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
   Widget _buildYearPicker(List<int> years) {
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey),
+        border: Border.all(color: AppColors.bgSelection),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -133,9 +135,9 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.blue.withAlpha(25),
+              color: AppColors.blue.withValues(alpha: 0.15),
               border: const Border(
-                bottom: BorderSide(color: Colors.grey),
+                bottom: BorderSide(color: AppColors.bgSelection),
               ),
             ),
             child: const Text(
@@ -164,8 +166,8 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
                       style: TextStyle(
                         fontSize: 16,
                         color: years[index] == _selectedYear
-                            ? Colors.blue
-                            : Colors.black,
+                            ? AppColors.blue
+                            : Theme.of(context).colorScheme.onSurface,
                         fontWeight: years[index] == _selectedYear
                             ? FontWeight.bold
                             : FontWeight.normal,
@@ -185,7 +187,7 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
   Widget _buildMonthPicker(List<int> months) {
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey),
+        border: Border.all(color: AppColors.bgSelection),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -193,9 +195,9 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.blue.withAlpha(25),
+              color: AppColors.blue.withValues(alpha: 0.15),
               border: const Border(
-                bottom: BorderSide(color: Colors.grey),
+                bottom: BorderSide(color: AppColors.bgSelection),
               ),
             ),
             child: const Text(
@@ -224,8 +226,8 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
                       style: TextStyle(
                         fontSize: 16,
                         color: months[index] == _selectedMonth
-                            ? Colors.blue
-                            : Colors.black,
+                            ? AppColors.blue
+                            : Theme.of(context).colorScheme.onSurface,
                         fontWeight: months[index] == _selectedMonth
                             ? FontWeight.bold
                             : FontWeight.normal,
@@ -245,7 +247,7 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
   Widget _buildDayPicker(List<int> days) {
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey),
+        border: Border.all(color: AppColors.bgSelection),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -253,9 +255,9 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.blue.withAlpha(25),
+              color: AppColors.blue.withValues(alpha: 0.15),
               border: const Border(
-                bottom: BorderSide(color: Colors.grey),
+                bottom: BorderSide(color: AppColors.bgSelection),
               ),
             ),
             child: const Text(
@@ -284,8 +286,8 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
                       style: TextStyle(
                         fontSize: 16,
                         color: days[index] == _selectedDay
-                            ? Colors.blue
-                            : Colors.black,
+                            ? AppColors.blue
+                            : Theme.of(context).colorScheme.onSurface,
                         fontWeight: days[index] == _selectedDay
                             ? FontWeight.bold
                             : FontWeight.normal,
