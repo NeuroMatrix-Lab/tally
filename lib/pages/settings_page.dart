@@ -409,7 +409,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     controller: _backendIpController,
                     decoration: const InputDecoration(
                       labelText: '服务器地址',
-                      hintText: '例如: tally.luminous-dev.icu',
+                      hintText: '例如: tally.example.com',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.computer),
                     ),
