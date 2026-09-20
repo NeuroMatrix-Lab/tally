@@ -20,10 +20,19 @@ env:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # 限制 Gradle 内存，避免 runner OOM / 卡住
+      GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g'
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -31,11 +40,25 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
 
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*', 'android/**/*.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build Android APK
         run: |
+          # 防止 Flutter 工具卡在改写 gradle.properties：先写好常用键
+          if ! grep -q 'org.gradle.jvmargs' android/gradle.properties; then
+            echo 'org.gradle.jvmargs=-Xmx4g' >> android/gradle.properties
+          fi
           flutter build apk --release --no-tree-shake-icons
           mkdir -p dist/android
           APK_PATH=$(find build/app/outputs/flutter-apk -maxdepth 1 -name '*release*.apk' | head -n 1)
@@ -56,6 +79,7 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    timeout-minutes: 40
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -90,6 +114,7 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
+    timeout-minutes: 40
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
