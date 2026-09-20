@@ -1,0 +1,162 @@
+name: Build Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'windows/**'
+      - 'macos/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/build-artifacts.yml'
+
+env:
+  FLUTTER_VERSION: '3.47.4'
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # 限制 Gradle 内存，避免 runner OOM / 卡住
+      GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*', 'android/**/*.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Android APK
+        run: |
+          # 防止 Flutter 工具卡在改写 gradle.properties：先写好常用键
+          if ! grep -q 'org.gradle.jvmargs' android/gradle.properties; then
+            echo 'org.gradle.jvmargs=-Xmx4g' >> android/gradle.properties
+          fi
+          flutter build apk --release --no-tree-shake-icons
+          mkdir -p dist/android
+          APK_PATH=$(find build/app/outputs/flutter-apk -maxdepth 1 -name '*release*.apk' | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: APK not found"
+            find build/app/outputs/flutter-apk -maxdepth 1 -type f -print
+            exit 1
+          fi
+          cp "$APK_PATH" "dist/android/tally-android.apk"
+          ls -lh dist/android/
+
+      - name: Upload Android
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: dist/android/tally-android.apk
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        shell: pwsh
+        run: flutter build windows --release
+
+      - name: Package Windows zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/windows | Out-Null
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath dist\windows\tally-windows.zip
+          Get-ChildItem dist/windows | Format-List Name, Length
+
+      - name: Upload Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: dist/windows/tally-windows.zip
+          if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS
+        run: |
+          flutter build macos --release --no-tree-shake-icons
+          APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: .app not found"
+            find build/macos/Build/Products/Release -maxdepth 2 -print
+            exit 1
+          fi
+          mkdir -p dist/macos
+          STAGING=$(mktemp -d)
+          cp -R "$APP_PATH" "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+          hdiutil create \
+            -volname "Tally" \
+            -srcfolder "$STAGING" \
+            -ov \
+            -format UDZO \
+            "dist/macos/tally-macos.dmg"
+          rm -rf "$STAGING"
+          ls -lh dist/macos/
+
+      - name: Upload macOS
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist/macos/tally-macos.dmg
+          if-no-files-found: error

@@ -14,6 +14,7 @@ import 'pages/recycle_bin_page.dart';
 import 'pages/account_check_page.dart';
 import 'services/api_service.dart';
 import 'theme/app_theme.dart';
+import 'window/immersive_window.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +23,8 @@ void main() async {
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    // 隐藏系统标题栏，使用 Flutter 自绘沉浸顶栏
+    await setupDesktopWindow();
   }
 
   await SystemChrome.setPreferredOrientations([
@@ -32,6 +35,15 @@ void main() async {
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   runApp(const MyApp());
+
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    try {
+      await windowManager.show();
+      await windowManager.focus();
+      // 再次隐藏原生标题栏/按钮，避免 show 之后系统热区回来
+      await applyHiddenTitleBar();
+    } catch (_) {}
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -44,14 +56,22 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      // 这套配色以深色为主，默认跟随系统；也可改成 ThemeMode.dark 强制深色
       themeMode: ThemeMode.system,
       builder: (context, child) {
+        final media = MediaQuery.of(context);
+        final scale = Platform.isWindows
+            ? const TextScaler.linear(1.0)
+            : media.textScaler;
+        final content = DefaultTextStyle(
+          style: DefaultTextStyle.of(context).style.copyWith(
+                decoration: TextDecoration.none,
+                decorationColor: Colors.transparent,
+              ),
+          child: wrapWithImmersiveChrome(child!),
+        );
         return MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(1.0)),
-          child: child!,
+          data: media.copyWith(textScaler: scale),
+          child: content,
         );
       },
       home: const HomePage(),
@@ -111,15 +131,44 @@ class _HomePageState extends State<HomePage> {
     _loadRecords();
     _loadStaffList();
     _initSync();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateChrome());
+  }
+
+  void _updateChrome() {
+    appChrome.update(
+      title: _pageTitles[_currentIndex],
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: _isSyncing
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : GestureDetector(
+                  onTap: _syncFromServer,
+                  child: Icon(
+                    _isServerConnected ? Icons.cloud_done : Icons.cloud_off,
+                    size: 20,
+                    color: _isServerConnected
+                        ? AppColors.success
+                        : AppColors.error,
+                  ),
+                ),
+        ),
+      ],
+    );
   }
 
   Future<void> _initSync() async {
     // 连接状态变化
-    ApiService.syncStream.listen((shouldSync) {
+      ApiService.syncStream.listen((shouldSync) {
       if (mounted) {
         setState(() {
           _isServerConnected = shouldSync;
         });
+        _updateChrome();
         if (shouldSync) {
           _loadRecords();
           _loadStaffList();
@@ -173,6 +222,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _isSyncing = true;
     });
+    _updateChrome();
 
     try {
       // 使用增量同步
@@ -195,6 +245,7 @@ class _HomePageState extends State<HomePage> {
           _isSyncing = false;
           _isServerConnected = true;
         });
+        _updateChrome();
         _saveRecords();
       }
     } catch (e) {
@@ -204,6 +255,7 @@ class _HomePageState extends State<HomePage> {
           _isSyncing = false;
           _isServerConnected = false;
         });
+        _updateChrome();
       }
     }
   }
@@ -435,39 +487,13 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Row(
-          children: [
-            Text(_pageTitles[_currentIndex]),
-            const SizedBox(width: 8),
-            if (_isSyncing)
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            else
-              GestureDetector(
-                onTap: _syncFromServer,
-                child: Icon(
-                  _isServerConnected ? Icons.cloud_done : Icons.cloud_off,
-                  size: 20,
-                  color: _isServerConnected ? AppColors.success : AppColors.error,
-                ),
-              ),
-          ],
-        ),
-      ),
       body: PageView(
         controller: _pageController,
         onPageChanged: (index) {
           setState(() {
             _currentIndex = index;
           });
+          _updateChrome();
         },
         children: [
           RepaintBoundary(
@@ -534,6 +560,7 @@ class _HomePageState extends State<HomePage> {
           setState(() {
             _currentIndex = index;
           });
+          _updateChrome();
           _pageController.animateToPage(
             index,
             duration: const Duration(milliseconds: 300),

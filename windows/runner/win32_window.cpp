@@ -15,6 +15,31 @@ namespace {
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
+#ifndef DWMWA_BORDER_COLOR
+#define DWMWA_BORDER_COLOR 34
+#endif
+#ifndef DWMWA_CAPTION_COLOR
+#define DWMWA_CAPTION_COLOR 35
+#endif
+#ifndef DWMWA_TEXT_COLOR
+#define DWMWA_TEXT_COLOR 36
+#endif
+#ifndef DWMWCP_ROUND
+#define DWMWCP_ROUND 2
+#endif
+
+// COLORREF = 0x00BBGGRR（蓝绿红），与 App 主题对齐。
+// 深色优先：标题栏 = scaffold bgPrimary #1E1E2E，和内容区连成一片。
+constexpr COLORREF kTallyCaptionDark = 0x002E1E1E;   // #1E1E2E
+constexpr COLORREF kTallyBorderDark = 0x003B3F51;    // #3B3F51  (bgSelection)
+constexpr COLORREF kTallyTextDark = 0x00E0E0E0;      // #E0E0E0
+// 浅色：scaffold #F4F5F8
+constexpr COLORREF kTallyCaptionLight = 0x00F8F5F4;  // #F4F5F8
+constexpr COLORREF kTallyBorderLight = 0x00E4E0D5;   // #D5D9E4
+constexpr COLORREF kTallyTextLight = 0x003A2D2A;     // #2A2D3A
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
@@ -150,7 +175,12 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  const bool result = ShowWindow(window_handle_, SW_SHOWNORMAL);
+  // 显示后再刷一次，避免创建时 DWM 未就绪导致标题栏仍是系统默认色
+  if (window_handle_) {
+    UpdateTheme(window_handle_);
+  }
+  return result;
 }
 
 // static
@@ -273,16 +303,24 @@ void Win32Window::OnDestroy() {
 }
 
 void Win32Window::UpdateTheme(HWND const window) {
-  DWORD light_mode;
-  DWORD light_mode_size = sizeof(light_mode);
-  LSTATUS result = RegGetValue(HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
-                               kGetPreferredBrightnessRegValue,
-                               RRF_RT_REG_DWORD, nullptr, &light_mode,
-                               &light_mode_size);
+  // Flutter 端 ThemeMode.dark：标题栏始终用 Tally 深色，不跟系统浅色。
+  // 若以后改回 ThemeMode.system，可再读 AppsUseLightTheme。
+  const bool prefer_light = false;
 
-  if (result == ERROR_SUCCESS) {
-    BOOL enable_dark_mode = light_mode == 0;
-    DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                          &enable_dark_mode, sizeof(enable_dark_mode));
-  }
+  BOOL enable_dark_mode = TRUE;
+  DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                        &enable_dark_mode, sizeof(enable_dark_mode));
+
+  const COLORREF caption = prefer_light ? kTallyCaptionLight : kTallyCaptionDark;
+  const COLORREF border = prefer_light ? kTallyBorderLight : kTallyBorderDark;
+  const COLORREF text = prefer_light ? kTallyTextLight : kTallyTextDark;
+
+  // Win11: 标题栏/边框/标题字；Win10 会忽略 CAPTION_COLOR，只留下 dark mode
+  DwmSetWindowAttribute(window, DWMWA_CAPTION_COLOR, &caption, sizeof(caption));
+  DwmSetWindowAttribute(window, DWMWA_BORDER_COLOR, &border, sizeof(border));
+  DwmSetWindowAttribute(window, DWMWA_TEXT_COLOR, &text, sizeof(text));
+
+  DWORD corner = DWMWCP_ROUND;
+  DwmSetWindowAttribute(window, DWMWA_WINDOW_CORNER_PREFERENCE, &corner,
+                        sizeof(corner));
 }

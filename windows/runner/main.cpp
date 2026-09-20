@@ -19,6 +19,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   flutter::DartProject project(L"data");
 
+  // Windows 上 Impeller 对文字描边容易出现闪边/彩边；先禁用，走兼容渲染。
+  // 若后续引擎文字质量稳定，可改回 Default/Enabled。
+  project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
+
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
