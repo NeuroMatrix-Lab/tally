@@ -1,4 +1,4 @@
-﻿name: Build and Release
+name: Build and Release
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for release (e.g. v1.1.2)'
+        description: 'Tag name for release (e.g. v1.1.4)'
         required: true
         default: 'v1.1.4'
 
@@ -93,6 +93,7 @@ jobs:
 
       - name: Set Version
         id: set_version
+        shell: pwsh
         run: |
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
             $VERSION = "${{ github.event.inputs.tag_name }}"
@@ -121,7 +122,7 @@ jobs:
           $outDir = "build/windows"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
           $publisher = "CN=Luminous, O=Luminous, C=CN"
-          # 浼樺厛浣跨敤浠撳簱 Secrets 閲岀殑姝ｅ紡/鍥哄畾璇佷功锛涘惁鍒欑敓鎴愯嚜绛捐瘉涔﹀苟涓?MSIX 涓€璧峰彂甯?
+          # Prefer repo secrets; otherwise generate a self-signed cert for MSIX.
           $b64 = "${{ secrets.WINDOWS_PFX_BASE64 }}"
           $pwd = "${{ secrets.WINDOWS_PFX_PASSWORD }}"
           $secretPublisher = "${{ secrets.WINDOWS_PFX_PUBLISHER }}"
@@ -136,7 +137,6 @@ jobs:
             Write-Host "Using certificate from repository secrets."
             [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($b64))
             $certPwd = ConvertTo-SecureString -String $pwd -Force -AsPlainText
-            # 灏介噺瀵煎嚭鍏挜锛屾柟渚垮拰 Release 涓€璧峰垎鍙?
             try {
               $tmpCer = Join-Path $env:RUNNER_TEMP "tally-from-pfx.cer"
               $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, $certPwd)
@@ -166,11 +166,13 @@ jobs:
             "cert_source=selfsigned" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           }
 
-          # publisher 蹇呴』涓庤瘉涔?Subject 涓€鑷?
+          # publisher must match certificate Subject
           $certObj = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, (ConvertTo-SecureString -String $pwd -Force -AsPlainText))
           $subject = $certObj.Subject
           Write-Host "Certificate subject: $subject"
-          (Get-Content pubspec.yaml) -replace '(?m)^\s*publisher:.*$', "  publisher: `"$subject`"" | Set-Content pubspec.yaml -Encoding utf8
+          $pubspec = Get-Content pubspec.yaml -Raw
+          $pubspec = $pubspec -replace '(?m)^\s*publisher:.*$', ('  publisher: "' + $subject + '"')
+          Set-Content pubspec.yaml -Value $pubspec -Encoding utf8NoBOM -NoNewline
 
           "has_cert=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "pfx_path=$pfxPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -182,9 +184,6 @@ jobs:
         if: steps.cert.outputs.has_cert == 'true'
         shell: pwsh
         run: |
-          $version = "${{ steps.set_version.outputs.version }}".TrimStart('v')
-          $outName = "tally-$(${{ steps.set_version.outputs.version }})-windows"
-          # 渚嬪 tally-v1.1.4-windows.msix 鈫?淇濇寔 tag 椋庢牸
           $tag = "${{ steps.set_version.outputs.version }}"
           $outName = "tally-$tag-windows"
           dart run msix:create `
@@ -200,6 +199,7 @@ jobs:
           Get-ChildItem -Path build/windows -Filter "*.cer" | Format-List FullName, Length
 
       - name: Create Windows Zip
+        shell: pwsh
         run: |
           $version = "${{ steps.set_version.outputs.version }}"
           $zipName = "tally-${version}-windows.zip"
@@ -333,34 +333,27 @@ jobs:
           files: release-assets/*
           body: |
             ## What's Changed
-            - Backend modularized: `server/src` split into config/models/state/auth/db/handlers
-            - Flutter `ApiService` split into `services/api/*` (records/ledgers/staff/meta)
+            - Backend modularized (config/models/state/auth/db/handlers)
+            - Flutter ApiService split into services/api/*
             - Dependencies: axum 0.8, sqlx 0.9, tower-http 0.7
-            - Windows: immersive title bar (Tally palette + rounded corners)
-            - Windows: disable Impeller + system fonts to reduce text edge flicker
-            - Server CI now runs cargo test
-            - Package id fixed: `com.luminous.tally`
-            - Windows: MSIX installer + self-signed certificate in this release
+            - Windows: immersive title bar + Impeller disabled for text fringe
+            - Rounded platform icons
+            - Package id: `com.luminous.tally`
+            - Windows MSIX + self-signed certificate
 
             ## Builds
             | Platform | Asset |
             |----------|-------|
             | Android | `tally-*-android.apk` / `.aab` |
-            | Windows | `tally-*-windows.msix` + `tally-windows-selfsigned.cer` / `.zip` |
+            | Windows | `tally-*-windows.msix` + `.cer` / `.zip` |
             | macOS | `tally-*-macos.dmg` |
 
-            ## Install Windows MSIX (self-signed)
-            1. Download `tally-*-windows.msix` and `tally-windows-selfsigned.cer`
-            2. Double-click the `.cer` 鈫?Install Certificate 鈫?Local Machine 鈫?Trusted Root / Trusted People
-            3. Install the `.msix` (鑻ユ彁绀鸿瘉涔︿笉鍙椾俊浠伙紝璇存槑绗?2 姝ユ湭瀹屾垚)
-            4. 鎴栫洿鎺ヨВ鍘?`tally-*-windows.zip` 浣跨敤
+            ## Windows MSIX (self-signed)
+            1. Download MSIX + `tally-windows-selfsigned.cer`
+            2. Install the cer into Local Machine Trusted People / Trusted Root
+            3. Install the MSIX, or just use the ZIP
 
-            ## Backend notes
-            - Health: `GET /api/v1/health` (no auth)
-            - Auth check: `GET /api/v1/auth`
-            - Optional password: set `API_PASSWORD` or `[server].password` in config.toml
-            - Package / bundle id: `com.luminous.tally`
-            - MSIX identity: `com.luminous.tally`
-            - Default self-signed publisher: `CN=Luminous, O=Luminous, C=CN`锛圫ubject 浠ュ綋娆?Release 涓瘉涔︿负鍑嗭級
-            - Optional repo secrets for a stable cert: `WINDOWS_PFX_BASE64`, `WINDOWS_PFX_PASSWORD`, `WINDOWS_PFX_PUBLISHER`
-
+            ## Backend
+            - Health: `GET /api/v1/health`
+            - Optional password: `API_PASSWORD` or config.toml `[server].password`
+            - Package id: `com.luminous.tally`
