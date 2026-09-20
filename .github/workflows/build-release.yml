@@ -9,7 +9,7 @@ on:
       tag_name:
         description: 'Tag name for release (e.g. v1.1.2)'
         required: true
-        default: 'v1.1.3'
+        default: 'v1.1.4'
 
 permissions:
   contents: write
@@ -114,6 +114,91 @@ jobs:
       - name: Build Windows Release
         run: flutter build windows --release
 
+      - name: Prepare code-signing certificate
+        id: cert
+        shell: pwsh
+        run: |
+          $outDir = "build/windows"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $publisher = "CN=Luminous, O=Luminous, C=CN"
+          # 优先使用仓库 Secrets 里的正式/固定证书；否则生成自签证书并与 MSIX 一起发布
+          $b64 = "${{ secrets.WINDOWS_PFX_BASE64 }}"
+          $pwd = "${{ secrets.WINDOWS_PFX_PASSWORD }}"
+          $secretPublisher = "${{ secrets.WINDOWS_PFX_PUBLISHER }}"
+          $pfxPath = Join-Path $env:RUNNER_TEMP "tally-windows.pfx"
+          $cerPath = Join-Path $outDir "tally-windows-selfsigned.cer"
+
+          if (-not [string]::IsNullOrWhiteSpace($secretPublisher)) {
+            $publisher = $secretPublisher
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace($b64) -and -not [string]::IsNullOrWhiteSpace($pwd)) {
+            Write-Host "Using certificate from repository secrets."
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($b64))
+            $certPwd = ConvertTo-SecureString -String $pwd -Force -AsPlainText
+            # 尽量导出公钥，方便和 Release 一起分发
+            try {
+              $tmpCer = Join-Path $env:RUNNER_TEMP "tally-from-pfx.cer"
+              $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, $certPwd)
+              [IO.File]::WriteAllBytes($tmpCer, $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+              Copy-Item $tmpCer $cerPath -Force
+            } catch {
+              Write-Host "WARN: could not export cer from secrets PFX: $_"
+            }
+            "cert_source=secrets" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            Write-Host "Generating self-signed code-signing certificate for MSIX..."
+            $certPwdPlain = "TallyMsixSelfSigned-1.1.4"
+            $certPwd = ConvertTo-SecureString -String $certPwdPlain -Force -AsPlainText
+            $cert = New-SelfSignedCertificate `
+              -Type CodeSigningCert `
+              -Subject $publisher `
+              -FriendlyName "Tally MSIX Self-Signed" `
+              -KeyAlgorithm RSA `
+              -KeyLength 2048 `
+              -KeyExportPolicy Exportable `
+              -KeyUsage DigitalSignature `
+              -NotAfter (Get-Date).AddYears(5) `
+              -CertStoreLocation "Cert:\CurrentUser\My"
+            Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $certPwd | Out-Null
+            Export-Certificate -Cert $cert -FilePath $cerPath | Out-Null
+            $pwd = $certPwdPlain
+            "cert_source=selfsigned" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+          # publisher 必须与证书 Subject 一致
+          $certObj = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, (ConvertTo-SecureString -String $pwd -Force -AsPlainText))
+          $subject = $certObj.Subject
+          Write-Host "Certificate subject: $subject"
+          (Get-Content pubspec.yaml) -replace '(?m)^\s*publisher:.*$', "  publisher: `"$subject`"" | Set-Content pubspec.yaml -Encoding utf8
+
+          "has_cert=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "pfx_path=$pfxPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "pfx_password=$pwd" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "cer_path=$cerPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "publisher=$subject" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build MSIX
+        if: steps.cert.outputs.has_cert == 'true'
+        shell: pwsh
+        run: |
+          $version = "${{ steps.set_version.outputs.version }}".TrimStart('v')
+          $outName = "tally-$(${{ steps.set_version.outputs.version }})-windows"
+          # 例如 tally-v1.1.4-windows.msix → 保持 tag 风格
+          $tag = "${{ steps.set_version.outputs.version }}"
+          $outName = "tally-$tag-windows"
+          dart run msix:create `
+            --build-windows false `
+            --output-path build/windows `
+            --output-name $outName `
+            --certificate-path "${{ steps.cert.outputs.pfx_path }}" `
+            --certificate-password "${{ steps.cert.outputs.pfx_password }}" `
+            --publisher "${{ steps.cert.outputs.publisher }}" `
+            --install-certificate false `
+            --release
+          Get-ChildItem -Path build/windows -Filter "*.msix" | Format-List FullName, Length
+          Get-ChildItem -Path build/windows -Filter "*.cer" | Format-List FullName, Length
+
       - name: Create Windows Zip
         run: |
           $version = "${{ steps.set_version.outputs.version }}"
@@ -126,7 +211,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-builds
-          path: build/windows/tally-*.zip
+          path: |
+            build/windows/tally-*.zip
+            build/windows/*.msix
+            build/windows/*.cer
+            build/windows/x64/runner/Release/*.msix
           if-no-files-found: error
 
   build-macos:
@@ -359,7 +448,7 @@ jobs:
       - name: Collect release files
         run: |
           mkdir -p release-assets
-          find artifacts -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.zip' -o -name '*.dmg' -o -name '*.rpm' \) -exec cp -v {} release-assets/ \;
+          find artifacts -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.zip' -o -name '*.dmg' -o -name '*.rpm' -o -name '*.msix' -o -name '*.cer' \) -exec cp -v {} release-assets/ \;
           echo "=== Release assets ==="
           ls -lh release-assets/
           COUNT=$(find release-assets -type f | wc -l)
@@ -378,20 +467,35 @@ jobs:
           files: release-assets/*
           body: |
             ## What's Changed
-            - Tally theme: dark gray-blue palette with unified semantic colors
-            - macOS: DMG packaging + system SQLite fallback for offline builds
-            - Platform icons unified from Android launcher
-            - Sync/auth hardening from previous commits
+            - Backend modularized: `server/src` split into config/models/state/auth/db/handlers
+            - Flutter `ApiService` split into `services/api/*` (records/ledgers/staff/meta)
+            - Dependencies: axum 0.8, sqlx 0.9, tower-http 0.7
+            - Windows: immersive title bar (Tally palette + rounded corners)
+            - Windows: disable Impeller + system fonts to reduce text edge flicker
+            - Server CI now runs cargo test
+            - Package id fixed: `com.luminous.tally`
+            - Windows: MSIX installer + self-signed certificate in this release
 
             ## Builds
             | Platform | Asset |
             |----------|-------|
             | Android | `tally-*-android.apk` / `.aab` |
-            | Windows | `tally-*-windows.zip` |
+            | Windows | `tally-*-windows.msix` + `tally-windows-selfsigned.cer` / `.zip` |
             | macOS | `tally-*-macos.dmg` |
             | Linux backend | `tally-server-*-linux.rpm` |
+
+            ## Install Windows MSIX (self-signed)
+            1. Download `tally-*-windows.msix` and `tally-windows-selfsigned.cer`
+            2. Double-click the `.cer` → Install Certificate → Local Machine → Trusted Root / Trusted People
+            3. Install the `.msix` (若提示证书不受信任，说明第 2 步未完成)
+            4. 或直接解压 `tally-*-windows.zip` 使用
 
             ## Backend notes
             - Health: `GET /api/v1/health` (no auth)
             - Auth check: `GET /api/v1/auth`
             - Optional password: set `API_PASSWORD` or `[server].password` in config.toml
+            - Package / bundle id: `com.luminous.tally`
+            - MSIX identity: `com.luminous.tally`
+            - Default self-signed publisher: `CN=Luminous, O=Luminous, C=CN`（Subject 以当次 Release 中证书为准）
+            - Optional repo secrets for a stable cert: `WINDOWS_PFX_BASE64`, `WINDOWS_PFX_PASSWORD`, `WINDOWS_PFX_PUBLISHER`
+

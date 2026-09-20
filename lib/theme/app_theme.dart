@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 /// Tally 统一配色（深灰蓝 Dracula 风）
@@ -109,8 +111,42 @@ class AppColors {
 class AppTheme {
   AppTheme._();
 
+  /// Windows 默认用 Segoe UI，中文回退雅黑，减轻 Impeller/Skia 描边闪边。
+  static List<String>? get _fontFamilyFallback {
+    if (Platform.isWindows) {
+      return const <String>[
+        'Segoe UI',
+        'Microsoft YaHei',
+        'Microsoft YaHei UI',
+      ];
+    }
+    return null;
+  }
+
+  static String? get _fontFamily =>
+      Platform.isWindows ? 'Segoe UI' : null;
+
   static ThemeData get dark => _build(AppColors.darkScheme);
   static ThemeData get light => _build(AppColors.lightScheme);
+
+  static TextStyle _text(
+    ColorScheme scheme, {
+    double? fontSize,
+    FontWeight? fontWeight,
+    Color? color,
+  }) {
+    return TextStyle(
+      color: color ?? scheme.onSurface,
+      fontSize: fontSize,
+      fontWeight: fontWeight ?? FontWeight.w400,
+      // 避免主题层叠出细描边/闪烁伪影
+      decoration: TextDecoration.none,
+      decorationColor: Colors.transparent,
+      decorationThickness: 0,
+      height: 1.35,
+      leadingDistribution: TextLeadingDistribution.even,
+    );
+  }
 
   static ThemeData _build(ColorScheme scheme) {
     final isDark = scheme.brightness == Brightness.dark;
@@ -123,6 +159,8 @@ class AppTheme {
       canvasColor: scheme.surface,
       cardColor: scheme.surfaceContainer,
       dividerColor: borderColor,
+      fontFamily: _fontFamily,
+      fontFamilyFallback: _fontFamilyFallback,
       focusColor: AppColors.blue.withValues(alpha: 0.28),
       highlightColor: isDark ? AppColors.bgHighlight : AppColors.blue.withValues(alpha: 0.12),
       splashColor: AppColors.blue.withValues(alpha: 0.18),
@@ -130,10 +168,11 @@ class AppTheme {
         backgroundColor: scheme.surfaceContainer,
         foregroundColor: scheme.onSurface,
         elevation: 0,
+        scrolledUnderElevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: scheme.onSurface),
-        titleTextStyle: TextStyle(
-          color: scheme.onSurface,
+        titleTextStyle: _text(
+          scheme,
           fontSize: 18,
           fontWeight: FontWeight.w600,
         ),
@@ -306,15 +345,15 @@ class AppTheme {
         collapsedIconColor: scheme.onSurfaceVariant,
       ),
       textTheme: TextTheme(
-        bodyLarge: TextStyle(color: scheme.onSurface, fontSize: 16),
-        bodyMedium: TextStyle(color: scheme.onSurface, fontSize: 14),
-        bodySmall: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-        titleLarge: TextStyle(color: scheme.onSurface, fontSize: 20, fontWeight: FontWeight.w600),
-        titleMedium: TextStyle(color: scheme.onSurface, fontSize: 16, fontWeight: FontWeight.w600),
-        titleSmall: TextStyle(color: scheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
-        labelLarge: TextStyle(color: scheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
-        labelMedium: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-        labelSmall: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
+        bodyLarge: _text(scheme, fontSize: 16),
+        bodyMedium: _text(scheme, fontSize: 14),
+        bodySmall: _text(scheme, fontSize: 12, color: scheme.onSurfaceVariant),
+        titleLarge: _text(scheme, fontSize: 20, fontWeight: FontWeight.w600),
+        titleMedium: _text(scheme, fontSize: 16, fontWeight: FontWeight.w600),
+        titleSmall: _text(scheme, fontSize: 14, fontWeight: FontWeight.w500),
+        labelLarge: _text(scheme, fontSize: 14, fontWeight: FontWeight.w500),
+        labelMedium: _text(scheme, fontSize: 12, color: scheme.onSurfaceVariant),
+        labelSmall: _text(scheme, fontSize: 11, color: scheme.onSurfaceVariant),
       ),
     );
   }

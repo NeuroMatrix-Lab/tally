@@ -22,10 +22,12 @@ Flutter 前端 + Rust 后端，支持多设备同步。
 👉 **[GitHub Releases](https://github.com/NeuroMatrix-Lab/tally/releases)**
 
 下载对应平台的安装包：
-- Android — APK 或 AAB（应用商店）
-- Windows — ZIP 解压即用
-- macOS — DMG 安装（拖到 Applications）
-- Linux 后端 — RPM 包，安装后可使用 systemd 运行
+- Android — APK 或 AAB
+- Windows — MSIX 或 ZIP（解压即用）
+- macOS — DMG（拖到 Applications）
+- Linux 后端 — RPM，systemd 运行
+
+包名：`com.luminous.tally`
 
 
 ## 自己部署后端
@@ -107,18 +109,6 @@ GET    /categories                类别
 后端可在 `config.toml` 的 `[server].password`（或环境变量 `API_PASSWORD`）设置访问密码。设置后除 `/health` 外需带 `X-Api-Password`（或 `Authorization: Bearer`）请求头；WebSocket 用 `?password=`。客户端在设置页填写同一密码。
 
 
-## CI
-
-推 tag `v*.*.*`（例如 `v1.1.2`）或手动触发，自动构建并发布：
-
-- Android APK + AAB
-- Windows ZIP
-- macOS DMG
-- Linux 后端 RPM（systemd）
-
-产物会挂到 GitHub Release。
-
-
 ## 项目结构
 
 ```
@@ -126,14 +116,16 @@ lib/                  Flutter 前端
   main.dart           入口
   models/             数据模型
   pages/              页面
-  services/           API 服务（config / HTTP / 同步 / 本地库已拆分）
+  services/           服务门面
+    api/              local / backend / database 实现
+  theme/              主题
   widgets/            组件
 
-server/               Rust 后端
-  src/main.rs         主逻辑
-  Dockerfile          Docker 构建
+server/               Rust 后端（axum + sqlx）
+  src/main.rs         启动与路由
+  src/handlers/       各资源 handler
+  Dockerfile
 
-.github/workflows/    CI 配置
 test/                 测试
 ```
 

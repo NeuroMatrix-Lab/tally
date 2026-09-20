@@ -47,11 +47,19 @@ class MyApp extends StatelessWidget {
       // 这套配色以深色为主，默认跟随系统；也可改成 ThemeMode.dark 强制深色
       themeMode: ThemeMode.system,
       builder: (context, child) {
+        final media = MediaQuery.of(context);
+        final scale = Platform.isWindows
+            ? const TextScaler.linear(1.0)
+            : media.textScaler;
         return MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(1.0)),
-          child: child!,
+          data: media.copyWith(textScaler: scale),
+          child: DefaultTextStyle(
+            style: DefaultTextStyle.of(context).style.copyWith(
+                  decoration: TextDecoration.none,
+                  decorationColor: Colors.transparent,
+                ),
+            child: child!,
+          ),
         );
       },
       home: const HomePage(),
