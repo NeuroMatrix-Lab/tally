@@ -165,7 +165,8 @@ class AppTheme {
       highlightColor: isDark ? AppColors.bgHighlight : AppColors.blue.withValues(alpha: 0.12),
       splashColor: AppColors.blue.withValues(alpha: 0.18),
       appBarTheme: AppBarTheme(
-        backgroundColor: scheme.surfaceContainer,
+        // 与 scaffold / 系统标题栏同色，顶栏连成一片
+        backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
         elevation: 0,
         scrolledUnderElevation: 0,

@@ -31,12 +31,13 @@ namespace {
 #define DWMWCP_ROUND 2
 #endif
 
-// Tally 深色：AppBar / surfaceContainer = #282A36 → COLORREF 0x00BBGGRR
-constexpr COLORREF kTallyCaptionDark = 0x00362A28;   // #282A36
-constexpr COLORREF kTallyBorderDark = 0x00513F3B;    // #3B3F51
+// COLORREF = 0x00BBGGRR（蓝绿红），与 App 主题对齐。
+// 深色优先：标题栏 = scaffold bgPrimary #1E1E2E，和内容区连成一片。
+constexpr COLORREF kTallyCaptionDark = 0x002E1E1E;   // #1E1E2E
+constexpr COLORREF kTallyBorderDark = 0x003B3F51;    // #3B3F51  (bgSelection)
 constexpr COLORREF kTallyTextDark = 0x00E0E0E0;      // #E0E0E0
-// Tally 浅色：surfaceContainer = #EAECF2
-constexpr COLORREF kTallyCaptionLight = 0x00F2ECEA;  // #EAECF2
+// 浅色：scaffold #F4F5F8
+constexpr COLORREF kTallyCaptionLight = 0x00F8F5F4;  // #F4F5F8
 constexpr COLORREF kTallyBorderLight = 0x00E4E0D5;   // #D5D9E4
 constexpr COLORREF kTallyTextLight = 0x003A2D2A;     // #2A2D3A
 
@@ -174,7 +175,12 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  const bool result = ShowWindow(window_handle_, SW_SHOWNORMAL);
+  // 显示后再刷一次，避免创建时 DWM 未就绪导致标题栏仍是系统默认色
+  if (window_handle_) {
+    UpdateTheme(window_handle_);
+  }
+  return result;
 }
 
 // static
@@ -297,30 +303,23 @@ void Win32Window::OnDestroy() {
 }
 
 void Win32Window::UpdateTheme(HWND const window) {
-  DWORD light_mode = 0;
-  DWORD light_mode_size = sizeof(light_mode);
-  LSTATUS result = RegGetValue(HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
-                               kGetPreferredBrightnessRegValue,
-                               RRF_RT_REG_DWORD, nullptr, &light_mode,
-                               &light_mode_size);
+  // Flutter 端 ThemeMode.dark：标题栏始终用 Tally 深色，不跟系统浅色。
+  // 若以后改回 ThemeMode.system，可再读 AppsUseLightTheme。
+  const bool prefer_light = false;
 
-  // 注册表读不到时按深色处理：Tally 配色以深色为主，避免标题栏突然发白。
-  const bool prefer_light =
-      (result == ERROR_SUCCESS) && (light_mode != 0) && (light_mode != 0xFFFFFFFF);
-
-  BOOL enable_dark_mode = prefer_light ? FALSE : TRUE;
+  BOOL enable_dark_mode = TRUE;
   DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
                         &enable_dark_mode, sizeof(enable_dark_mode));
 
-  // Win11：标题栏 / 边框 / 标题文字对齐 App 配色，减少「系统灰条」割裂感。
   const COLORREF caption = prefer_light ? kTallyCaptionLight : kTallyCaptionDark;
   const COLORREF border = prefer_light ? kTallyBorderLight : kTallyBorderDark;
   const COLORREF text = prefer_light ? kTallyTextLight : kTallyTextDark;
+
+  // Win11: 标题栏/边框/标题字；Win10 会忽略 CAPTION_COLOR，只留下 dark mode
   DwmSetWindowAttribute(window, DWMWA_CAPTION_COLOR, &caption, sizeof(caption));
   DwmSetWindowAttribute(window, DWMWA_BORDER_COLOR, &border, sizeof(border));
   DwmSetWindowAttribute(window, DWMWA_TEXT_COLOR, &text, sizeof(text));
 
-  // Win11 圆角；老系统忽略即可。
   DWORD corner = DWMWCP_ROUND;
   DwmSetWindowAttribute(window, DWMWA_WINDOW_CORNER_PREFERENCE, &corner,
                         sizeof(corner));
