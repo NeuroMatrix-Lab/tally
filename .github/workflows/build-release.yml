@@ -1,4 +1,4 @@
-name: Build and Release
+﻿name: Build and Release
 
 on:
   push:
@@ -121,7 +121,7 @@ jobs:
           $outDir = "build/windows"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
           $publisher = "CN=Luminous, O=Luminous, C=CN"
-          # 优先使用仓库 Secrets 里的正式/固定证书；否则生成自签证书并与 MSIX 一起发布
+          # 浼樺厛浣跨敤浠撳簱 Secrets 閲岀殑姝ｅ紡/鍥哄畾璇佷功锛涘惁鍒欑敓鎴愯嚜绛捐瘉涔﹀苟涓?MSIX 涓€璧峰彂甯?
           $b64 = "${{ secrets.WINDOWS_PFX_BASE64 }}"
           $pwd = "${{ secrets.WINDOWS_PFX_PASSWORD }}"
           $secretPublisher = "${{ secrets.WINDOWS_PFX_PUBLISHER }}"
@@ -136,7 +136,7 @@ jobs:
             Write-Host "Using certificate from repository secrets."
             [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($b64))
             $certPwd = ConvertTo-SecureString -String $pwd -Force -AsPlainText
-            # 尽量导出公钥，方便和 Release 一起分发
+            # 灏介噺瀵煎嚭鍏挜锛屾柟渚垮拰 Release 涓€璧峰垎鍙?
             try {
               $tmpCer = Join-Path $env:RUNNER_TEMP "tally-from-pfx.cer"
               $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, $certPwd)
@@ -166,7 +166,7 @@ jobs:
             "cert_source=selfsigned" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           }
 
-          # publisher 必须与证书 Subject 一致
+          # publisher 蹇呴』涓庤瘉涔?Subject 涓€鑷?
           $certObj = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, (ConvertTo-SecureString -String $pwd -Force -AsPlainText))
           $subject = $certObj.Subject
           Write-Host "Certificate subject: $subject"
@@ -184,7 +184,7 @@ jobs:
         run: |
           $version = "${{ steps.set_version.outputs.version }}".TrimStart('v')
           $outName = "tally-$(${{ steps.set_version.outputs.version }})-windows"
-          # 例如 tally-v1.1.4-windows.msix → 保持 tag 风格
+          # 渚嬪 tally-v1.1.4-windows.msix 鈫?淇濇寔 tag 椋庢牸
           $tag = "${{ steps.set_version.outputs.version }}"
           $outName = "tally-$tag-windows"
           dart run msix:create `
@@ -287,142 +287,8 @@ jobs:
           path: dist/macos/tally-*
           if-no-files-found: error
 
-  build-server-rpm:
-    runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set Version
-        id: set_version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.tag_name }}"
-          else
-            VERSION="${{ github.ref_name }}"
-          fi
-          VERSION="${VERSION#v}"
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+(\.[0-9]+){2}([-.][0-9A-Za-z.-]+)?$'; then
-            echo "Invalid release version for RPM: $VERSION"
-            exit 1
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Install RPM tooling
-        run: sudo apt-get update && sudo apt-get install --yes rpm
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            server/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('server/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Build server
-        working-directory: server
-        run: cargo build --release --locked
-
-      - name: Package server RPM
-        working-directory: server
-        env:
-          RPM_VERSION: ${{ steps.set_version.outputs.version }}
-        run: |
-          RPM_ROOT="$PWD/rpmbuild"
-          mkdir -p "$RPM_ROOT"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-          mkdir -p "$RPM_ROOT/buildroot/usr/bin"
-          mkdir -p "$RPM_ROOT/buildroot/etc/tally"
-          mkdir -p "$RPM_ROOT/buildroot/usr/lib/systemd/system"
-
-          install -m 0755 target/release/tally-server "$RPM_ROOT/buildroot/usr/bin/tally-server"
-          install -m 0644 config.toml "$RPM_ROOT/buildroot/etc/tally/config.toml"
-          cat > "$RPM_ROOT/buildroot/usr/lib/systemd/system/tally-server.service" <<'EOF'
-          [Unit]
-          Description=Tally bookkeeping backend
-          After=network-online.target
-          Wants=network-online.target
-
-          [Service]
-          Type=simple
-          ExecStart=/usr/bin/tally-server
-          Environment=CONFIG_PATH=/etc/tally/config.toml
-          Restart=on-failure
-          RestartSec=5
-
-          [Install]
-          WantedBy=multi-user.target
-          EOF
-
-          cat > "$RPM_ROOT/SPECS/tally-server.spec" <<EOF
-          Name:           tally-server
-          Version:        ${RPM_VERSION}
-          Release:        1%{?dist}
-          Summary:        Tally bookkeeping backend
-          License:        MIT
-          AutoReqProv:    no
-          Requires:       openssl-libs
-          Requires:       ca-certificates
-          Requires:       systemd
-
-          %description
-          Rust backend service for the Tally bookkeeping application.
-
-          %install
-          mkdir -p %{buildroot}/usr/bin
-          mkdir -p %{buildroot}/etc/tally
-          mkdir -p %{buildroot}/usr/lib/systemd/system
-          cp -a %{_topdir}/buildroot/usr/bin/tally-server %{buildroot}/usr/bin/
-          cp -a %{_topdir}/buildroot/etc/tally/config.toml %{buildroot}/etc/tally/
-          cp -a %{_topdir}/buildroot/usr/lib/systemd/system/tally-server.service %{buildroot}/usr/lib/systemd/system/
-
-          %post
-          systemctl daemon-reload >/dev/null 2>&1 || :
-
-          %preun
-          if [ "\$1" -eq 0 ]; then
-            systemctl disable --now tally-server.service >/dev/null 2>&1 || :
-          fi
-
-          %postun
-          systemctl daemon-reload >/dev/null 2>&1 || :
-
-          %files
-          %attr(0755,root,root) /usr/bin/tally-server
-          %config(noreplace) %attr(0644,root,root) /etc/tally/config.toml
-          %attr(0644,root,root) /usr/lib/systemd/system/tally-server.service
-          EOF
-
-          rpmbuild --define "_topdir $RPM_ROOT" -bb "$RPM_ROOT/SPECS/tally-server.spec"
-
-          echo "=== rpmbuild outputs ==="
-          find "$RPM_ROOT/RPMS" -type f -ls || true
-
-          OUT_DIR="${{ github.workspace }}/dist/server"
-          mkdir -p "$OUT_DIR"
-          RPM_SRC=$(find "$RPM_ROOT/RPMS" -type f -name 'tally-server-*.rpm' | head -n 1)
-          if [ -z "$RPM_SRC" ]; then
-            echo "ERROR: no RPM produced by rpmbuild"
-            find "$RPM_ROOT" -type f -ls || true
-            exit 1
-          fi
-          cp "$RPM_SRC" "$OUT_DIR/tally-server-${RPM_VERSION}-linux.rpm"
-          ls -lh "$OUT_DIR"
-
-      - name: Upload server RPM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: server-rpm
-          path: dist/server/tally-server-*.rpm
-          if-no-files-found: error
-
   release:
-    needs: [build-android, build-windows, build-macos, build-server-rpm]
+    needs: [build-android, build-windows, build-macos]
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -448,12 +314,12 @@ jobs:
       - name: Collect release files
         run: |
           mkdir -p release-assets
-          find artifacts -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.zip' -o -name '*.dmg' -o -name '*.rpm' -o -name '*.msix' -o -name '*.cer' \) -exec cp -v {} release-assets/ \;
+          find artifacts -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.zip' -o -name '*.dmg' -o -name '*.msix' -o -name '*.cer' \) -exec cp -v {} release-assets/ \;
           echo "=== Release assets ==="
           ls -lh release-assets/
           COUNT=$(find release-assets -type f | wc -l)
-          if [ "$COUNT" -lt 5 ]; then
-            echo "ERROR: expected at least 5 assets, got $COUNT"
+          if [ "$COUNT" -lt 3 ]; then
+            echo "ERROR: expected at least 3 assets, got $COUNT"
             exit 1
           fi
 
@@ -482,13 +348,12 @@ jobs:
             | Android | `tally-*-android.apk` / `.aab` |
             | Windows | `tally-*-windows.msix` + `tally-windows-selfsigned.cer` / `.zip` |
             | macOS | `tally-*-macos.dmg` |
-            | Linux backend | `tally-server-*-linux.rpm` |
 
             ## Install Windows MSIX (self-signed)
             1. Download `tally-*-windows.msix` and `tally-windows-selfsigned.cer`
-            2. Double-click the `.cer` → Install Certificate → Local Machine → Trusted Root / Trusted People
-            3. Install the `.msix` (若提示证书不受信任，说明第 2 步未完成)
-            4. 或直接解压 `tally-*-windows.zip` 使用
+            2. Double-click the `.cer` 鈫?Install Certificate 鈫?Local Machine 鈫?Trusted Root / Trusted People
+            3. Install the `.msix` (鑻ユ彁绀鸿瘉涔︿笉鍙椾俊浠伙紝璇存槑绗?2 姝ユ湭瀹屾垚)
+            4. 鎴栫洿鎺ヨВ鍘?`tally-*-windows.zip` 浣跨敤
 
             ## Backend notes
             - Health: `GET /api/v1/health` (no auth)
@@ -496,6 +361,6 @@ jobs:
             - Optional password: set `API_PASSWORD` or `[server].password` in config.toml
             - Package / bundle id: `com.luminous.tally`
             - MSIX identity: `com.luminous.tally`
-            - Default self-signed publisher: `CN=Luminous, O=Luminous, C=CN`（Subject 以当次 Release 中证书为准）
+            - Default self-signed publisher: `CN=Luminous, O=Luminous, C=CN`锛圫ubject 浠ュ綋娆?Release 涓瘉涔︿负鍑嗭級
             - Optional repo secrets for a stable cert: `WINDOWS_PFX_BASE64`, `WINDOWS_PFX_PASSWORD`, `WINDOWS_PFX_PUBLISHER`
 

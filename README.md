@@ -25,7 +25,7 @@ Flutter 前端 + Rust 后端，支持多设备同步。
 - Android — APK 或 AAB
 - Windows — MSIX 或 ZIP（解压即用）
 - macOS — DMG（拖到 Applications）
-- Linux 后端 — RPM，systemd 运行
+- Linux 后端 — 源码 `cargo run` / Docker 部署
 
 包名：`com.luminous.tally`
 
