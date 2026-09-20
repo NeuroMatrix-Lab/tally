@@ -40,6 +40,8 @@ void main() async {
     try {
       await windowManager.show();
       await windowManager.focus();
+      // 再次隐藏原生标题栏/按钮，避免 show 之后系统热区回来
+      await applyHiddenTitleBar();
     } catch (_) {}
   }
 }
@@ -54,7 +56,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.dark,
+      themeMode: ThemeMode.system,
       builder: (context, child) {
         final media = MediaQuery.of(context);
         final scale = Platform.isWindows

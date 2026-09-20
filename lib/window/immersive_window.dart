@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
-export 'package:window_manager/window_manager.dart' show windowManager;
+export 'package:window_manager/window_manager.dart'
+    show windowManager, WindowListener, DragToMoveArea, WindowCaptionButton;
 
 /// Windows 沉浸式窗口：隐藏系统标题栏后的高度。
 const double kImmersiveTitleBarHeight = 42;
@@ -49,7 +50,20 @@ class ChromeModel extends ChangeNotifier {
 
 final ChromeModel appChrome = ChromeModel();
 
-/// 桌面端初始化：隐藏系统标题栏，窗口底色对齐 Tally 深色。
+/// 强制隐藏系统标题栏和原生窗口按钮，避免 hover 时冒出白色系统条。
+Future<void> applyHiddenTitleBar() async {
+  if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) {
+    return;
+  }
+  try {
+    await windowManager.setTitleBarStyle(
+      TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+    );
+  } catch (_) {}
+}
+
+/// 桌面端初始化：隐藏系统标题栏与原生按钮。
 Future<void> setupDesktopWindow() async {
   if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) {
     return;
@@ -66,12 +80,16 @@ Future<void> setupDesktopWindow() async {
   );
 
   await windowManager.waitUntilReadyToShow(options, null);
+  await applyHiddenTitleBar();
   await windowManager.setBackgroundColor(const Color(0xFF1E1E2E));
   await windowManager.setTitle('Tally');
   await windowManager.setMinimumSize(const Size(900, 600));
 }
 
-/// 自绘顶栏：整条可拖拽，右侧最小化/最大化/关闭。
+/// 自绘顶栏：左侧可拖拽（标题/操作），右侧固定窗口按钮（不参与拖拽）。
+///
+/// 布局对齐 window_manager 官方 WindowCaption：按钮在 Row 外侧，
+/// 避免和拖拽区抢事件，也避免按钮被挤到左边。
 class ImmersiveTitleBar extends StatefulWidget {
   const ImmersiveTitleBar({super.key});
 
@@ -79,7 +97,8 @@ class ImmersiveTitleBar extends StatefulWidget {
   State<ImmersiveTitleBar> createState() => _ImmersiveTitleBarState();
 }
 
-class _ImmersiveTitleBarState extends State<ImmersiveTitleBar> with WindowListener {
+class _ImmersiveTitleBarState extends State<ImmersiveTitleBar>
+    with WindowListener {
   bool _maximized = false;
 
   @override
@@ -88,6 +107,10 @@ class _ImmersiveTitleBarState extends State<ImmersiveTitleBar> with WindowListen
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       windowManager.addListener(this);
       _syncMaximized();
+      // 启动后再压一次，清掉原生按钮热区
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        applyHiddenTitleBar();
+      });
     }
   }
 
@@ -108,6 +131,9 @@ class _ImmersiveTitleBarState extends State<ImmersiveTitleBar> with WindowListen
   @override
   void onWindowRestore() => _syncMaximized();
 
+  @override
+  void onWindowFocus() => setState(() {});
+
   Future<void> _syncMaximized() async {
     try {
       final v = await windowManager.isMaximized();
@@ -117,15 +143,6 @@ class _ImmersiveTitleBarState extends State<ImmersiveTitleBar> with WindowListen
     } catch (_) {}
   }
 
-  Future<void> _toggleMaximize() async {
-    if (await windowManager.isMaximized()) {
-      await windowManager.unmaximize();
-    } else {
-      await windowManager.maximize();
-    }
-    await _syncMaximized();
-  }
-
   @override
   Widget build(BuildContext context) {
     if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) {
@@ -133,61 +150,68 @@ class _ImmersiveTitleBarState extends State<ImmersiveTitleBar> with WindowListen
     }
 
     final scheme = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
 
     return ListenableBuilder(
       listenable: appChrome,
       builder: (context, _) {
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onPanStart: (_) {
-            windowManager.startDragging();
-          },
-          onDoubleTap: _toggleMaximize,
-          child: Material(
-            color: scheme.surface,
-            child: SizedBox(
-              height: kImmersiveTitleBarHeight,
-              child: Row(
-                children: [
-                  if (appChrome.leading != null)
-                    appChrome.leading!
-                  else
-                    const SizedBox(width: 12),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      appChrome.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: scheme.onSurface,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+        return Material(
+          color: scheme.surface,
+          child: SizedBox(
+            height: kImmersiveTitleBarHeight,
+            child: Row(
+              children: [
+                // 左侧：标题 + 页面操作，整块可拖拽；按钮不在这里面
+                Expanded(
+                  child: DragToMoveArea(
+                    child: SizedBox(
+                      height: kImmersiveTitleBarHeight,
+                      child: Row(
+                        children: [
+                          if (appChrome.leading != null)
+                            appChrome.leading!
+                          else
+                            const SizedBox(width: 12),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              appChrome.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: scheme.onSurface,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          ...appChrome.actions,
+                          const SizedBox(width: 8),
+                        ],
                       ),
                     ),
                   ),
-                  ...appChrome.actions,
-                  const SizedBox(width: 4),
-                  _CaptionButton(
-                    tooltip: '最小化',
-                    icon: Icons.remove_rounded,
-                    onTap: () => windowManager.minimize(),
+                ),
+                // 右侧：原生感窗口按钮，固定在最右，不随标题变形
+                WindowCaptionButton.minimize(
+                  brightness: brightness,
+                  onPressed: () => windowManager.minimize(),
+                ),
+                if (_maximized)
+                  WindowCaptionButton.unmaximize(
+                    brightness: brightness,
+                    onPressed: () => windowManager.unmaximize(),
+                  )
+                else
+                  WindowCaptionButton.maximize(
+                    brightness: brightness,
+                    onPressed: () => windowManager.maximize(),
                   ),
-                  _CaptionButton(
-                    tooltip: _maximized ? '还原' : '最大化',
-                    icon: _maximized
-                        ? Icons.filter_none_rounded
-                        : Icons.crop_square_rounded,
-                    onTap: _toggleMaximize,
-                  ),
-                  _CaptionButton(
-                    tooltip: '关闭',
-                    icon: Icons.close_rounded,
-                    hoverColor: const Color(0xFFE81123),
-                    onTap: () => windowManager.close(),
-                  ),
-                ],
-              ),
+                WindowCaptionButton.close(
+                  brightness: brightness,
+                  onPressed: () => windowManager.close(),
+                ),
+              ],
             ),
           ),
         );
@@ -196,62 +220,12 @@ class _ImmersiveTitleBarState extends State<ImmersiveTitleBar> with WindowListen
   }
 }
 
-class _CaptionButton extends StatefulWidget {
-  const _CaptionButton({
-    required this.icon,
-    required this.onTap,
-    this.tooltip,
-    this.hoverColor,
-  });
-
-  final IconData icon;
-  final VoidCallback onTap;
-  final String? tooltip;
-  final Color? hoverColor;
-
-  @override
-  State<_CaptionButton> createState() => _CaptionButtonState();
-}
-
-class _CaptionButtonState extends State<_CaptionButton> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final hover = widget.hoverColor ?? scheme.onSurface.withValues(alpha: 0.08);
-    final iconColor = _hover && widget.hoverColor != null
-        ? Colors.white
-        : scheme.onSurface.withValues(alpha: 0.85);
-
-    final btn = MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          width: 46,
-          height: kImmersiveTitleBarHeight,
-          color: _hover ? hover : Colors.transparent,
-          child: Icon(widget.icon, size: 16, color: iconColor),
-        ),
-      ),
-    );
-
-    if (widget.tooltip == null) return btn;
-    return Tooltip(message: widget.tooltip!, child: btn);
-  }
-}
-
-/// 手机端头部：只放标题 + 同步图标，不带窗口按钮，不依赖系统标题栏。
+/// 手机端头部：只放标题 + 同步图标，不带窗口按钮。
 class ChromeHeader extends StatelessWidget {
   const ChromeHeader({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // 桌面由 ImmersiveTitleBar 负责
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       return const SizedBox.shrink();
     }
@@ -296,7 +270,6 @@ class ChromeHeader extends StatelessWidget {
   }
 }
 
-/// 非 Windows 等桌面端时，用普通高度占位，避免布局跳动。
 Widget wrapWithImmersiveChrome(Widget child) {
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
     return Column(
@@ -307,7 +280,6 @@ Widget wrapWithImmersiveChrome(Widget child) {
     );
   }
 
-  // 手机：无系统顶栏需求，但标题和同步图标要可见
   return Column(
     children: [
       const ChromeHeader(),
