@@ -326,14 +326,23 @@ class _SettingsPageState extends State<SettingsPage> {
             Radio<ConnectionMode>(
               value: mode,
               groupValue: _selectedMode,
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               onChanged: (value) {
                 setState(() {
                   _selectedMode = value!;
                 });
               },
             ),
-            Icon(icon, color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
-            const SizedBox(width: 16),
+            const SizedBox(width: 4),
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -341,17 +350,21 @@ class _SettingsPageState extends State<SettingsPage> {
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 14,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface,
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   Text(
                     subtitle,
                     style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -362,35 +375,45 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  InputDecoration _denseDecoration({
+    required String labelText,
+    String? hintText,
+  }) {
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      isDense: true,
+      border: const OutlineInputBorder(),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+    );
+  }
+
   Widget _buildBackendSettings() {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(12.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
               '后端服务器配置',
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   flex: 2,
                   child: DropdownButtonFormField<String>(
                     value: _backendProtocol,
-                    decoration: const InputDecoration(
-                      labelText: '协议',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.security),
-                    ),
+                    isDense: true,
+                    decoration: _denseDecoration(labelText: '协议'),
                     items: const [
-                      DropdownMenuItem(value: 'https', child: Text('HTTPS')),
-                      DropdownMenuItem(value: 'http', child: Text('HTTP')),
+                      DropdownMenuItem(value: 'https', child: Text('HTTPS', style: TextStyle(fontSize: 13))),
+                      DropdownMenuItem(value: 'http', child: Text('HTTP', style: TextStyle(fontSize: 13))),
                     ],
                     onChanged: (value) {
                       if (value != null) {
@@ -402,42 +425,33 @@ class _SettingsPageState extends State<SettingsPage> {
                     },
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   flex: 3,
                   child: TextField(
                     controller: _backendIpController,
-                    decoration: const InputDecoration(
+                    decoration: _denseDecoration(
                       labelText: '服务器地址',
-                      hintText: '例如: tally.luminous-dev.icu',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.computer),
+                      hintText: 'tally.example.com',
                     ),
+                    style: const TextStyle(fontSize: 13),
                     keyboardType: TextInputType.text,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             TextField(
               controller: _backendPortController,
-              decoration: const InputDecoration(
-                labelText: '端口',
-                hintText: '例如: 443',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.settings_ethernet),
-              ),
+              decoration: _denseDecoration(labelText: '端口', hintText: '443'),
+              style: const TextStyle(fontSize: 13),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             TextField(
               controller: _backendPasswordController,
-              decoration: const InputDecoration(
-                labelText: '访问密码',
-                hintText: '后端未设置密码可留空',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock_outline),
-              ),
+              decoration: _denseDecoration(labelText: '访问密码', hintText: '可留空'),
+              style: const TextStyle(fontSize: 13),
               obscureText: true,
               keyboardType: TextInputType.text,
             ),
@@ -450,70 +464,50 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildDatabaseSettings() {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(12.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
               '数据库配置',
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             TextField(
               controller: _dbHostController,
-              decoration: const InputDecoration(
-                labelText: '数据库主机',
-                hintText: '例如: 192.168.1.100',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.storage),
-              ),
+              decoration: _denseDecoration(labelText: '数据库主机', hintText: '192.168.1.100'),
+              style: const TextStyle(fontSize: 13),
               keyboardType: TextInputType.text,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             TextField(
               controller: _dbPortController,
-              decoration: const InputDecoration(
-                labelText: '端口',
-                hintText: '例如: 3306',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.settings_ethernet),
-              ),
+              decoration: _denseDecoration(labelText: '端口', hintText: '3306'),
+              style: const TextStyle(fontSize: 13),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             TextField(
               controller: _dbNameController,
-              decoration: const InputDecoration(
-                labelText: '数据库名称',
-                hintText: '例如: tally_db',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.folder),
-              ),
+              decoration: _denseDecoration(labelText: '数据库名称', hintText: 'tally_db'),
+              style: const TextStyle(fontSize: 13),
               keyboardType: TextInputType.text,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             TextField(
               controller: _dbUserController,
-              decoration: const InputDecoration(
-                labelText: '用户名',
-                hintText: '数据库用户名',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person),
-              ),
+              decoration: _denseDecoration(labelText: '用户名', hintText: '数据库用户名'),
+              style: const TextStyle(fontSize: 13),
               keyboardType: TextInputType.text,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             TextField(
               controller: _dbPasswordController,
-              decoration: const InputDecoration(
-                labelText: '密码',
-                hintText: '数据库密码',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock),
-              ),
+              decoration: _denseDecoration(labelText: '密码', hintText: '数据库密码'),
+              style: const TextStyle(fontSize: 13),
               obscureText: true,
               keyboardType: TextInputType.text,
             ),
@@ -564,15 +558,28 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('设置'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+      body: SafeArea(
+        child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(8, 4, 16, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.pop(context),
+                  tooltip: '返回',
+                ),
+                Expanded(
+                  child: Text(
+                    '设置',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             _buildModeSelector(),
             const SizedBox(height: 16),
             _buildModeDescription(),
@@ -585,46 +592,64 @@ class _SettingsPageState extends State<SettingsPage> {
                 onPressed: _isLoading ? null : _testConnection,
                 icon: _isLoading
                     ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.wifi_tethering),
-                label: Text(_isLoading ? '测试中...' : '测试连接'),
+                    : const Icon(Icons.wifi_tethering, size: 16),
+                label: Text(
+                  _isLoading ? '测试中...' : '测试连接',
+                  style: const TextStyle(fontSize: 13),
+                ),
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ),
-            if (_selectedMode != ConnectionMode.local) const SizedBox(height: 12),
+            if (_selectedMode != ConnectionMode.local) const SizedBox(height: 8),
             ElevatedButton.icon(
               onPressed: _isLoading ? null : _saveSettings,
               icon: _isLoading
                   ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: const CircularProgressIndicator(
-                        strokeWidth: 2,
-                      ),
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.save),
-              label: Text(_isLoading ? '保存中...' : '保存设置'),
+                  : const Icon(Icons.save, size: 16),
+              label: Text(
+                _isLoading ? '保存中...' : '保存设置',
+                style: const TextStyle(fontSize: 13),
+              ),
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.cancel),
-              label: const Text('取消'),
+              icon: const Icon(Icons.cancel, size: 16),
+              label: const Text('取消', style: TextStyle(fontSize: 13)),
               style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '如果需要云同步功能请联系music-yinlinghan@outlook.com',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ],
         ),
+      ),
       ),
     );
   }

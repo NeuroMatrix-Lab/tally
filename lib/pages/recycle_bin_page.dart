@@ -16,27 +16,42 @@ class RecycleBinPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: const Text('回收站'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: onClose,
-        ),
-      ),
-      body: deletedRecords.isEmpty
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.delete_outline, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('回收站为空', style: TextStyle(fontSize: 18, color: Colors.grey)),
-                ],
-              ),
-            )
-          : ListView.builder(
+      body: SafeArea(
+        child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 16, 8),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: onClose,
+                  tooltip: '返回',
+                ),
+                Expanded(
+                  child: Text(
+                    '回收站',
+                    style: theme.textTheme.titleLarge,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: deletedRecords.isEmpty
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.delete_outline, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text('回收站为空', style: TextStyle(fontSize: 18, color: Colors.grey)),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
               itemCount: deletedRecords.length,
               itemBuilder: (context, index) {
                 final record = deletedRecords[index];
@@ -78,6 +93,10 @@ class RecycleBinPage extends StatelessWidget {
                 );
               },
             ),
+          ),
+        ],
+        ),
+      ),
     );
   }
 }
