@@ -53,6 +53,14 @@ async fn main() -> Result<()> {
 
     let pool = MySqlPoolOptions::new()
         .max_connections(5)
+        .after_connect(|connection, _| {
+            Box::pin(async move {
+                sqlx::query("SET time_zone = '+08:00'")
+                    .execute(connection)
+                    .await?;
+                Ok(())
+            })
+        })
         .connect(&database_url)
         .await?;
 

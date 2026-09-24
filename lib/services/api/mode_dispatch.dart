@@ -50,6 +50,7 @@ Future<T> withMySqlConnection<T>(
   final settings = await dbSettings();
   final conn = await MySqlConnection.connect(settings);
   try {
+    await conn.query("SET time_zone = '+08:00'");
     return await action(conn);
   } finally {
     await conn.close();

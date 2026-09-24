@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'api_config.dart';
+import 'app_time.dart';
 import 'backend_client.dart';
 import 'connection_mode.dart';
 import 'local_database.dart';
@@ -197,14 +198,14 @@ class SyncService {
       batch.insert('records', {
         'id': record.id,
         'record_id': record.id,
-        'date': record.date.toIso8601String(),
+        'date': ApiConfig.serializeDateForBackend(record.date),
         'category': record.category,
         'work_content': record.workContent,
         'amount': record.amount,
         'ledger': record.ledger,
         'image_url': record.imageUrl,
         'staff_ids': json.encode(record.staffIds),
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': AppTime.now().toIso8601String(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 

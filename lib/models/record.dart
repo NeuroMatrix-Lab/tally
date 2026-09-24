@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../services/app_time.dart';
+
 class Record {
   final String id;
   final DateTime date;
@@ -24,7 +26,7 @@ class Record {
   Map<String, dynamic> toMap() {
     return {
       'recordId': id,
-      'date': date.toIso8601String(),
+      'date': AppTime.serializeBusinessDate(date),
       'workContent': workContent,
       'amount': amount,
       'category': category,
@@ -42,15 +44,15 @@ class Record {
     } else if (map['id'] != null) {
       idValue = map['id'].toString();
     } else {
-      idValue = DateTime.now().millisecondsSinceEpoch.toString();
+      idValue = AppTime.now().millisecondsSinceEpoch.toString();
     }
     
     // 处理日期字段
     DateTime dateValue;
     try {
-      dateValue = DateTime.parse(map['date'].toString());
+      dateValue = AppTime.parse(map['date'].toString());
     } catch (e) {
-      dateValue = DateTime.now();
+      dateValue = AppTime.now();
     }
     
     // 处理金额字段

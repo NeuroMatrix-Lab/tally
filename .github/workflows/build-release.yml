@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for release (e.g. v1.1.6)'
+        description: 'Tag name for release (e.g. v1.1.7)'
         required: true
-        default: 'v1.1.6'
+        default: 'v1.1.7'
 
 permissions:
   contents: write
@@ -166,7 +166,7 @@ jobs:
             "cert_source=secrets" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           } else {
             Write-Host "Generating self-signed code-signing certificate for MSIX..."
-            $certPwdPlain = "TallyMsixSelfSigned-1.1.6"
+            $certPwdPlain = "TallyMsixSelfSigned-1.1.7"
             $certPwd = ConvertTo-SecureString -String $certPwdPlain -Force -AsPlainText
             $cert = New-SelfSignedCertificate `
               -Type CodeSigningCert `

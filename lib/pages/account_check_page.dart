@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/record.dart';
 import '../models/staff.dart';
 import '../widgets/custom_date_picker.dart';
+import '../services/app_time.dart';
 import '../window/immersive_window.dart';
 import 'edit_record_dialog.dart';
 
@@ -817,7 +818,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
   Future<void> _selectDate(bool isStartDate) async {
     final DateTime? picked = await showCustomDatePicker(
       context: context,
-      initialDate: (isStartDate ? _startDate : _endDate) ?? DateTime.now(),
+      initialDate: (isStartDate ? _startDate : _endDate) ?? AppTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
     );

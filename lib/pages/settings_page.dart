@@ -217,6 +217,7 @@ class _SettingsPageState extends State<SettingsPage> {
           final connection = await MySqlConnection.connect(
             settings,
           ).timeout(const Duration(seconds: 10));
+          await connection.query("SET time_zone = '+08:00'");
           await connection.close();
 
           message = '数据库连接成功！';

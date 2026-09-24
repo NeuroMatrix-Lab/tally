@@ -28,13 +28,7 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/tally-server ./
 
-ENV PORT=7378
-ENV DB_HOST=db
-ENV DB_PORT=3306
-ENV DB_USER=tally_user
-ENV DB_PASSWORD=tally_password
-ENV DB_NAME=tally
-
+# 统一走 config.toml，不再通过环境变量覆盖数据库和鉴权配置
 EXPOSE 7378
 
 CMD ["./tally-server"]

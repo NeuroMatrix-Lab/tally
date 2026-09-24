@@ -4,6 +4,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../widgets/custom_date_picker.dart';
+import '../services/app_time.dart';
 import '../services/api_service.dart';
 import '../window/immersive_window.dart';
 import 'ledger_manage_page.dart';
@@ -55,7 +56,7 @@ class AddRecordPage extends StatefulWidget {
 }
 
 class _AddRecordPageState extends State<AddRecordPage> {
-  DateTime _selectedDate = DateTime.now();
+  DateTime _selectedDate = AppTime.now();
   final TextEditingController _workContentController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _categoryController = TextEditingController();
@@ -89,7 +90,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
         final file = File(pickedFile.path);
         final compressed = await FlutterImageCompress.compressAndGetFile(
           file.path,
-          '${file.parent.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          '${file.parent.path}/compressed_${AppTime.now().millisecondsSinceEpoch}.jpg',
           quality: 30,
           minWidth: 800,
           minHeight: 800,
@@ -210,7 +211,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
     _amountController.clear();
     _categoryController.clear();
     setState(() {
-      _selectedDate = DateTime.now();
+      _selectedDate = AppTime.now();
       _isUploading = false;
       _selectedImage = null;
     });

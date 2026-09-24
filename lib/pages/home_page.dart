@@ -9,6 +9,7 @@ import '../models/record.dart';
 import '../models/staff.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../services/app_time.dart';
 import 'account_check_page.dart';
 import 'add_record_page.dart';
 import 'operation_log_page.dart';
@@ -222,8 +223,8 @@ class HomePageState extends State<HomePage> {
 
   void _addOperationLog(String type, String description, {String? details}) {
     final log = OperationLog(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      timestamp: DateTime.now(),
+      id: AppTime.now().millisecondsSinceEpoch.toString(),
+      timestamp: AppTime.now(),
       type: type,
       description: description,
       details: details,
@@ -246,7 +247,7 @@ class HomePageState extends State<HomePage> {
     String? imageUrl,
   }) async {
     final newRecord = Record(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: AppTime.now().millisecondsSinceEpoch.toString(),
       date: date,
       workContent: workContent,
       amount: amount,

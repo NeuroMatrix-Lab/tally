@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../models/record.dart';
+import '../app_time.dart';
 import '../record_mappers.dart';
 import '../sync_service.dart';
 import 'mode_dispatch.dart';
@@ -51,11 +52,11 @@ class RecordsOps {
 
   static Future<List<Record>> _getRecentLocal(int months) async {
     final db = await localDb();
-    final cutoffDate = DateTime.now().subtract(Duration(days: months * 30));
+    final cutoffDate = AppTime.now().subtract(Duration(days: months * 30));
     final results = await db.query(
       'records',
       where: 'deleted_at IS NULL AND date >= ?',
-      whereArgs: [cutoffDate.toIso8601String()],
+      whereArgs: [serializeDateForBackend(cutoffDate)],
       orderBy: 'date DESC',
     );
     return results.map((row) => RecordMappers.fromLocalMap(row)).toList();
@@ -102,7 +103,10 @@ class RecordsOps {
   ) async {
     final db = await localDb();
     var whereClause = 'deleted_at IS NULL AND date BETWEEN ? AND ?';
-    var whereArgs = [startDate.toIso8601String(), endDate.toIso8601String()];
+    var whereArgs = [
+      serializeDateForBackend(startDate),
+      serializeDateForBackend(endDate),
+    ];
 
     if (category != null) {
       whereClause += ' AND category = ?';
@@ -148,7 +152,10 @@ class RecordsOps {
         SELECT * FROM records
         WHERE deleted_at IS NULL AND date BETWEEN ? AND ?
       ''';
-      var params = [startDate.toIso8601String(), endDate.toIso8601String()];
+      var params = [
+        serializeDateForBackend(startDate),
+        serializeDateForBackend(endDate),
+      ];
 
       if (category != null) {
         query += ' AND category = ?';
@@ -182,7 +189,7 @@ class RecordsOps {
     await db.insert('records', {
       'id': record.id,
       'record_id': record.id,
-      'date': record.date.toIso8601String(),
+      'date': serializeDateForBackend(record.date),
       'category': record.category,
       'work_content': record.workContent,
       'amount': record.amount,
@@ -216,7 +223,7 @@ class RecordsOps {
       ''',
         [
           record.id,
-          record.date.toIso8601String(),
+          serializeDateForBackend(record.date),
           record.category,
           record.workContent,
           record.amount,
@@ -246,14 +253,14 @@ class RecordsOps {
     await db.update(
       'records',
       {
-        'date': record.date.toIso8601String(),
+        'date': serializeDateForBackend(record.date),
         'category': record.category,
         'work_content': record.workContent,
         'amount': record.amount,
         'ledger': record.ledger,
         'image_url': record.imageUrl,
         'staff_ids': json.encode(record.staffIds),
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': AppTime.now().toIso8601String(),
       },
       where: 'record_id = ?',
       whereArgs: [record.id],
@@ -283,7 +290,7 @@ class RecordsOps {
         WHERE record_id = ? AND deleted_at IS NULL
       ''',
         [
-          record.date.toIso8601String(),
+          serializeDateForBackend(record.date),
           record.category,
           record.workContent,
           record.amount,
@@ -330,7 +337,7 @@ class RecordsOps {
 
       await db.update(
         'records',
-        {'deleted_at': DateTime.now().toIso8601String()},
+        {'deleted_at': AppTime.now().toIso8601String()},
         where: 'record_id = ?',
         whereArgs: [recordId],
       );

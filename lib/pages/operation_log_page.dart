@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/operation_log.dart';
 import '../widgets/custom_date_picker.dart';
+import '../services/app_time.dart';
 import '../window/immersive_window.dart';
 import 'settings_page.dart';
 
@@ -63,7 +64,7 @@ class _OperationLogPageState extends State<OperationLogPage> {
   Future<void> _selectStartDate() async {
     final DateTime? picked = await showCustomDatePicker(
       context: context,
-      initialDate: _startDate ?? DateTime.now(),
+      initialDate: _startDate ?? AppTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
     );
@@ -77,7 +78,7 @@ class _OperationLogPageState extends State<OperationLogPage> {
   Future<void> _selectEndDate() async {
     final DateTime? picked = await showCustomDatePicker(
       context: context,
-      initialDate: _endDate ?? DateTime.now(),
+      initialDate: _endDate ?? AppTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
     );

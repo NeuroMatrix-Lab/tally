@@ -2,6 +2,7 @@ import 'package:mysql1/mysql1.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'connection_mode.dart';
+import 'app_time.dart';
 
 class ApiConfig {
   static Future<ConnectionMode> getConnectionMode() async {
@@ -95,6 +96,6 @@ class ApiConfig {
   }
 
   static String serializeDateForBackend(DateTime date) {
-    return date.toUtc().toIso8601String();
+    return AppTime.serializeBusinessDate(date);
   }
 }
