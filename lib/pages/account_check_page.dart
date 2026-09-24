@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/record.dart';
 import '../models/staff.dart';
 import '../widgets/custom_date_picker.dart';
+import '../window/immersive_window.dart';
 import 'edit_record_dialog.dart';
 
 class AccountCheckPage extends StatefulWidget {
@@ -17,6 +18,9 @@ class AccountCheckPage extends StatefulWidget {
   final Function(String) onLedgerChanged;
   final Function(Record) onUpdate;
   final Function(Record) onDelete;
+  final bool isSyncing;
+  final bool isServerConnected;
+  final VoidCallback onSync;
 
   const AccountCheckPage({
     super.key,
@@ -27,6 +31,9 @@ class AccountCheckPage extends StatefulWidget {
     required this.onLedgerChanged,
     required this.onUpdate,
     required this.onDelete,
+    required this.isSyncing,
+    required this.isServerConnected,
+    required this.onSync,
   });
 
   @override
@@ -913,10 +920,28 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
   Widget build(BuildContext context) {
     final groupedRecords = _groupedRecords;
 
-    return Padding(
-      padding: const EdgeInsets.all(12.0),
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+      padding: const EdgeInsets.fromLTRB(12.0, 4.0, 12.0, 12.0),
       child: Column(
         children: [
+          PageTitleBar(
+            title: '查账',
+            isSyncing: widget.isSyncing,
+            isServerConnected: widget.isServerConnected,
+            onSync: widget.onSync,
+            padding: EdgeInsets.zero,
+            actions: [
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.delete_outline, size: 20),
+                tooltip: '回收站',
+                onPressed: () => Navigator.pushNamed(context, '/recycle_bin'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           // 搜索框和筛选按钮行
           Row(
             children: [
@@ -1036,6 +1061,7 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
                   ),
           ),
         ],
+      ),
       ),
     );
   }

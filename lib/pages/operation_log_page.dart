@@ -2,12 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/operation_log.dart';
 import '../widgets/custom_date_picker.dart';
+import '../window/immersive_window.dart';
 import 'settings_page.dart';
 
 class OperationLogPage extends StatefulWidget {
   final List<OperationLog> operationLogs;
+  final bool isSyncing;
+  final bool isServerConnected;
+  final VoidCallback onSync;
 
-  const OperationLogPage({super.key, required this.operationLogs});
+  const OperationLogPage({
+    super.key,
+    required this.operationLogs,
+    required this.isSyncing,
+    required this.isServerConnected,
+    required this.onSync,
+  });
 
   @override
   State<OperationLogPage> createState() => _OperationLogPageState();
@@ -84,14 +94,37 @@ class _OperationLogPageState extends State<OperationLogPage> {
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      body: Column(
+      body: SafeArea(
+        bottom: false,
+        child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(16.0),
-            color: colorScheme.surfaceContainerHighest,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            color: colorScheme.surface,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                PageTitleBar(
+                  title: '操作记录',
+                  padding: EdgeInsets.zero,
+                  isSyncing: widget.isSyncing,
+                  isServerConnected: widget.isServerConnected,
+                  onSync: widget.onSync,
+                  actions: [
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.settings, size: 20),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const SettingsPage()),
+                        );
+                      },
+                      tooltip: '设置',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
@@ -112,17 +145,6 @@ class _OperationLogPageState extends State<OperationLogPage> {
                           });
                         },
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.settings),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const SettingsPage()),
-                        );
-                      },
-                      tooltip: '设置',
                     ),
                   ],
                 ),
@@ -280,6 +302,7 @@ class _OperationLogPageState extends State<OperationLogPage> {
                   ),
           ),
         ],
+        ),
       ),
     );
   }

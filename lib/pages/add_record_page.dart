@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../widgets/custom_date_picker.dart';
 import '../services/api_service.dart';
+import '../window/immersive_window.dart';
 import 'ledger_manage_page.dart';
 import 'staff_selection_page.dart';
 import '../models/staff.dart';
@@ -28,6 +29,9 @@ class AddRecordPage extends StatefulWidget {
   final Function(List<String>)? onLedgersUpdated;
   final List<Staff> staffList;
   final Function() onStaffListUpdated;
+  final bool isSyncing;
+  final bool isServerConnected;
+  final VoidCallback onSync;
 
   const AddRecordPage({
     super.key,
@@ -41,6 +45,9 @@ class AddRecordPage extends StatefulWidget {
     this.onLedgersUpdated,
     required this.staffList,
     required this.onStaffListUpdated,
+    required this.isSyncing,
+    required this.isServerConnected,
+    required this.onSync,
   });
 
   @override
@@ -356,17 +363,22 @@ class _AddRecordPageState extends State<AddRecordPage> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return SafeArea(
+      bottom: false,
+      child: SingleChildScrollView(
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              '添加记录',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            PageTitleBar(
+              title: '记账',
+              isSyncing: widget.isSyncing,
+              isServerConnected: widget.isServerConnected,
+              onSync: widget.onSync,
+              padding: EdgeInsets.zero,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             // 始终水平排列账本和日期
             Row(
               children: [
@@ -544,6 +556,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

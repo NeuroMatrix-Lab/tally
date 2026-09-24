@@ -251,23 +251,41 @@ class _StaffSelectionPageState extends State<StaffSelectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('选择参与人员'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.sync),
-            onPressed: _syncStaffList,
-            tooltip: '同步人员列表',
-          ),
-          TextButton(
-            onPressed: _saveAndReturn,
-            child: const Text('确认', style: TextStyle(color: Colors.black)),
-          ),
-        ],
-      ),
-      body: Column(
+      body: SafeArea(
+        child: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.pop(context),
+                  tooltip: '返回',
+                ),
+                Expanded(
+                  child: Text(
+                    '选择参与人员',
+                    style: theme.textTheme.titleLarge,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.sync),
+                  onPressed: _syncStaffList,
+                  tooltip: '同步人员列表',
+                ),
+                TextButton(
+                  onPressed: _saveAndReturn,
+                  child: Text(
+                    '确认',
+                    style: TextStyle(color: theme.colorScheme.primary),
+                  ),
+                ),
+              ],
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
@@ -293,6 +311,7 @@ class _StaffSelectionPageState extends State<StaffSelectionPage> {
                   ),
           ),
         ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addStaff,
