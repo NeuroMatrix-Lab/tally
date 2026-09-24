@@ -6,6 +6,7 @@ plugins {
 }
 
 android {
+    // 包名已固定，禁止改动
     namespace = "com.luminous.tally"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
@@ -20,6 +21,7 @@ android {
     }
 
     defaultConfig {
+        // applicationId 与 namespace / MainActivity 一致，禁止改动
         applicationId = "com.luminous.tally"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion

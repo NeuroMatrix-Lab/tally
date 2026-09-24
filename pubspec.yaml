@@ -2,7 +2,7 @@ name: tally
 description: "一款记账软件"
 publish_to: 'none'
 
-version: 1.1.4
+version: 1.1.5
 
 environment:
   sdk: ^3.10.4
@@ -33,13 +33,14 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   msix: ^3.16.13
 
-# GitHub 不可达时 macOS 用系统 SQLite，避免下载预编译库超时
+# GitHub 不可达时：macOS 用系统 SQLite；Android 走 ghproxy 镜像下载预编译库
 hooks:
   user_defines:
     sqlite3:
       source:
         macos: system
         default: sqlite3
+      url_pattern: "https://ghproxy.net/https://github.com/simolus3/sqlite3.dart/releases/download/$RELEASE_TAG/$FILENAME"
 
 flutter:
   uses-material-design: true
@@ -50,7 +51,7 @@ msix_config:
   # 必须与代码签名证书 Subject 完全一致（自签默认见 CI / 发布说明）
   publisher: "CN=Luminous, O=Luminous, C=CN"
   identity_name: "com.luminous.tally"
-  msix_version: "1.1.4.0"
+  msix_version: "1.1.5.0"
   logo_path: "android/app/src/main/res/mipmap-hdpi/ic_launcher.png"
   capabilities: internetClient, location
   # 自签/外部证书由 CI 通过 msix:create --certificate-path 注入，勿提交私钥

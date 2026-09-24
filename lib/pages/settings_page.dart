@@ -266,7 +266,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildModeSelector() {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
+      color: scheme.surface,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -313,57 +315,63 @@ class _SettingsPageState extends State<SettingsPage> {
     IconData icon,
   ) {
     final isSelected = _selectedMode == mode;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedMode = mode;
-        });
+    return RadioListTile<ConnectionMode>(
+      value: mode,
+      groupValue: _selectedMode,
+      onChanged: (value) {
+        if (value != null) {
+          setState(() {
+            _selectedMode = value;
+          });
+        }
       },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12.0),
-        child: Row(
-          children: [
-            Radio<ConnectionMode>(
-              value: mode,
-              groupValue: _selectedMode,
-              onChanged: (value) {
-                setState(() {
-                  _selectedMode = value!;
-                });
-              },
-            ),
-            Icon(icon, color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface,
-                    ),
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      title: Row(
+        children: [
+          Icon(
+            icon,
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurface,
                   ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                    ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.6),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildBackendSettings() {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
+      color: scheme.surface,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -382,7 +390,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 Expanded(
                   flex: 2,
                   child: DropdownButtonFormField<String>(
-                    value: _backendProtocol,
+                    initialValue: _backendProtocol,
                     decoration: const InputDecoration(
                       labelText: '协议',
                       border: OutlineInputBorder(),
@@ -448,7 +456,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildDatabaseSettings() {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
+      color: scheme.surface,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -537,22 +547,27 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
     }
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+        // 与页面底色一致，仅用细边框区分，避免色块分段
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Theme.of(context).primaryColor.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.35),
+        ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline, color: Theme.of(context).primaryColor, size: 20),
+          Icon(Icons.info_outline, color: Theme.of(context).primaryColor, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               description,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 12.5,
                 color: Theme.of(context).primaryColor,
+                height: 1.35,
               ),
             ),
           ),
@@ -564,22 +579,25 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: const Text('设置'),
         centerTitle: true,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildModeSelector(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             _buildModeDescription(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             if (_selectedMode == ConnectionMode.backend) _buildBackendSettings(),
             if (_selectedMode == ConnectionMode.database) _buildDatabaseSettings(),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             if (_selectedMode != ConnectionMode.local)
               OutlinedButton.icon(
                 onPressed: _isLoading ? null : _testConnection,
@@ -597,14 +615,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
-            if (_selectedMode != ConnectionMode.local) const SizedBox(height: 12),
+            if (_selectedMode != ConnectionMode.local) const SizedBox(height: 8),
             ElevatedButton.icon(
               onPressed: _isLoading ? null : _saveSettings,
               icon: _isLoading
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: const CircularProgressIndicator(
+                      child: CircularProgressIndicator(
                         strokeWidth: 2,
                       ),
                     )
@@ -614,7 +632,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: () => Navigator.pop(context),
               icon: const Icon(Icons.cancel),

@@ -157,7 +157,8 @@ class AppTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: scheme.surface,
       canvasColor: scheme.surface,
-      cardColor: scheme.surfaceContainer,
+      // 与 Scaffold 同色，避免卡片把背景分成深浅两段
+      cardColor: scheme.surface,
       dividerColor: borderColor,
       fontFamily: _fontFamily,
       fontFamilyFallback: _fontFamilyFallback,
@@ -179,7 +180,7 @@ class AppTheme {
         ),
       ),
       cardTheme: CardThemeData(
-        color: scheme.surfaceContainer,
+        color: scheme.surface,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
@@ -278,17 +279,17 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: scheme.surfaceContainer,
+        backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: scheme.surfaceContainer,
+        backgroundColor: scheme.surface,
         selectedItemColor: AppColors.blue,
         unselectedItemColor: scheme.onSurfaceVariant,
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: scheme.surfaceContainer,
+        backgroundColor: scheme.surface,
         indicatorColor: AppColors.bgHighlight,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
@@ -327,21 +328,21 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       popupMenuTheme: PopupMenuThemeData(
-        color: scheme.surfaceContainer,
+        color: scheme.surface,
         surfaceTintColor: Colors.transparent,
         textStyle: TextStyle(color: scheme.onSurface),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: scheme.surfaceContainer,
+        backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
       ),
       expansionTileTheme: ExpansionTileThemeData(
-        backgroundColor: scheme.surfaceContainer,
-        collapsedBackgroundColor: scheme.surfaceContainer,
+        backgroundColor: scheme.surface,
+        collapsedBackgroundColor: scheme.surface,
         iconColor: scheme.onSurface,
         collapsedIconColor: scheme.onSurfaceVariant,
       ),

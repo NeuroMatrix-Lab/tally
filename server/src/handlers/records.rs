@@ -87,7 +87,9 @@ async fn search_records(
     }
     query.push_str(" ORDER BY date DESC");
 
-    let mut sql_query = sqlx::query(&query).bind(start_date).bind(end_date);
+    let mut sql_query = sqlx::query(sqlx::AssertSqlSafe(query))
+        .bind(start_date)
+        .bind(end_date);
 
     if let Some(category) = &req.category {
         sql_query = sql_query.bind(category);

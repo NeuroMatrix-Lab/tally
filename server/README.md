@@ -43,6 +43,13 @@ docker compose down
 
 如需连数据库数据一起删除，执行 `docker compose down -v`，这会永久删除 MySQL 数据。
 
+### Podman 部署
+
+如果部署环境使用 Podman，构建基础镜像需要使用可访问的固定 Rust 版本。当前
+`Dockerfile` 使用 Rust 1.94，以匹配 `Cargo.lock` 中 SQLx 0.9 的最低版本要求。
+构建和运行时请保留现有数据库容器、数据库连接参数和 `7378` 端口映射；不要删除
+数据库卷或数据库容器。
+
 ### 使用单独构建并运行
 1. 构建镜像：
 

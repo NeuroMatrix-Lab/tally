@@ -1,4 +1,4 @@
-FROM rust:latest-slim as builder
+FROM docker.m.daocloud.io/library/rust:1.94-slim-bookworm as builder
 
 WORKDIR /app
 
