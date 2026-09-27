@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'glass_controls.dart';
 
 class CustomDatePicker extends StatefulWidget {
   final DateTime initialDate;
@@ -107,14 +108,15 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(
+                GlassTextAction(
+                  label: '取消',
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('取消'),
                 ),
                 const SizedBox(width: 10),
-                ElevatedButton(
+                GlassPrimaryButton(
+                  label: '确定',
                   onPressed: _onConfirm,
-                  child: const Text('确定'),
+                  height: 40,
                 ),
               ],
             ),

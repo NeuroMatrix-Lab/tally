@@ -5,6 +5,7 @@ import '../widgets/custom_date_picker.dart';
 import '../services/app_time.dart';
 import '../window/immersive_window.dart';
 import 'settings_page.dart';
+import '../widgets/glass_controls.dart';
 
 class OperationLogPage extends StatefulWidget {
   final List<OperationLog> operationLogs;
@@ -112,16 +113,20 @@ class _OperationLogPageState extends State<OperationLogPage> {
                   isServerConnected: widget.isServerConnected,
                   onSync: widget.onSync,
                   actions: [
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.settings, size: 20),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const SettingsPage()),
-                        );
-                      },
-                      tooltip: '设置',
+                    SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: IconButton(
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.settings, size: 20),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const SettingsPage()),
+                          );
+                        },
+                        tooltip: '设置',
+                      ),
                     ),
                   ],
                 ),
@@ -129,17 +134,9 @@ class _OperationLogPageState extends State<OperationLogPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextField(
-                        decoration: InputDecoration(
-                          hintText: '搜索关键词',
-                          prefixIcon: Icon(Icons.search, color: theme.iconTheme.color),
-                          border: OutlineInputBorder(
-                            borderSide: BorderSide(color: colorScheme.outline),
-                          ),
-                          filled: true,
-                          fillColor: colorScheme.surface,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
+                      child: GlassField(
+                        hintText: '搜索关键词',
+                        searchStyle: true,
                         onChanged: (value) {
                           setState(() {
                             _searchKeyword = value;
@@ -153,80 +150,24 @@ class _OperationLogPageState extends State<OperationLogPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: GestureDetector(
+                      child: GlassSelector(
+                        value: _startDate == null
+                            ? '开始日期'
+                            : DateFormat('yyyy-MM-dd').format(_startDate!),
+                        placeholder: _startDate == null,
+                        trailing: const Icon(Icons.calendar_today_outlined, size: 18),
                         onTap: _selectStartDate,
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surface,
-                            border: Border.all(color: colorScheme.outline),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  _startDate == null
-                                      ? '开始日期'
-                                      : DateFormat('yyyy-MM-dd').format(_startDate!),
-                                  style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
-                                ),
-                              ),
-                              if (_startDate != null)
-                                IconButton(
-                                  icon: Icon(Icons.clear, size: 20, color: colorScheme.onSurface),
-                                  onPressed: () {
-                                    setState(() {
-                                      _startDate = null;
-                                    });
-                                  },
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                              Icon(Icons.calendar_today, size: 20, color: colorScheme.onSurface),
-                            ],
-                          ),
-                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: GestureDetector(
+                      child: GlassSelector(
+                        value: _endDate == null
+                            ? '结束日期'
+                            : DateFormat('yyyy-MM-dd').format(_endDate!),
+                        placeholder: _endDate == null,
+                        trailing: const Icon(Icons.calendar_today_outlined, size: 18),
                         onTap: _selectEndDate,
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surface,
-                            border: Border.all(color: colorScheme.outline),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  _endDate == null
-                                      ? '结束日期'
-                                      : DateFormat('yyyy-MM-dd').format(_endDate!),
-                                  style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
-                                ),
-                              ),
-                              if (_endDate != null)
-                                IconButton(
-                                  icon: Icon(Icons.clear, size: 20, color: colorScheme.onSurface),
-                                  onPressed: () {
-                                    setState(() {
-                                      _endDate = null;
-                                    });
-                                  },
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                              Icon(Icons.calendar_today, size: 20, color: colorScheme.onSurface),
-                            ],
-                          ),
-                        ),
                       ),
                     ),
                   ],
@@ -236,11 +177,10 @@ class _OperationLogPageState extends State<OperationLogPage> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      FilterChip(
-                        label: const Text('全部'),
+                      GlassFilterChip(
+                        label: '全部',
                         selected: _selectedType == null,
-                        showCheckmark: false,
-                        onSelected: (selected) {
+                        onSelected: (_) {
                           setState(() {
                             _selectedType = null;
                           });
@@ -249,10 +189,9 @@ class _OperationLogPageState extends State<OperationLogPage> {
                       const SizedBox(width: 8),
                       ..._operationTypes.map((type) => Padding(
                         padding: const EdgeInsets.only(right: 8),
-                        child: FilterChip(
-                          label: Text(type),
+                        child: GlassFilterChip(
+                          label: type,
                           selected: _selectedType == type,
-                          showCheckmark: false,
                           onSelected: (selected) {
                             setState(() {
                               _selectedType = selected ? type : null;

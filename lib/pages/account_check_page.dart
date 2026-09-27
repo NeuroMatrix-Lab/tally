@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/record.dart';
 import '../models/staff.dart';
 import '../widgets/custom_date_picker.dart';
+import '../widgets/glass_controls.dart';
 import '../services/app_time.dart';
 import '../window/immersive_window.dart';
 import 'edit_record_dialog.dart';
@@ -934,11 +935,15 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
             onSync: widget.onSync,
             padding: EdgeInsets.zero,
             actions: [
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.delete_outline, size: 20),
-                tooltip: '回收站',
-                onPressed: () => Navigator.pushNamed(context, '/recycle_bin'),
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  tooltip: '回收站',
+                  onPressed: () => Navigator.pushNamed(context, '/recycle_bin'),
+                ),
               ),
             ],
           ),
@@ -948,51 +953,20 @@ class _AccountCheckPageState extends State<AccountCheckPage> {
             children: [
               // 搜索框
               Expanded(
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: '搜索工作内容、类别、金额、参与人员...',
-                    prefixIcon: Icon(
-                      Icons.search,
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withAlpha(153),
-                    ),
-                    border: OutlineInputBorder(
-                      borderSide: BorderSide(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: 8,
-                      horizontal: 12,
-                    ),
-                  ),
+                child: GlassField(
+                  searchStyle: true,
+                  hintText: '搜索工作内容、类别、金额、参与人员...',
+                  prefixIcon: const Icon(Icons.search),
                   onChanged: (value) => setState(() => _searchKeyword = value),
                 ),
               ),
               const SizedBox(width: 8),
               // 高级筛选按钮
-              ElevatedButton.icon(
+              GlassSecondaryButton(
+                label: _showFilters ? '关闭' : '筛选',
+                height: 44,
+                width: 88,
                 onPressed: () => setState(() => _showFilters = !_showFilters),
-                icon: Icon(Icons.filter_list, size: 14),
-                label: Text(
-                  _showFilters ? '关闭' : '筛选',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 6,
-                    horizontal: 8,
-                  ),
-                  backgroundColor: _showFilters
-                      ? Theme.of(context).colorScheme.primaryContainer
-                      : null,
-                ),
               ),
             ],
           ),

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'pages/home_page.dart';
@@ -25,7 +26,14 @@ Future<void> main() async {
 
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-  runApp(const MyApp());
+  await LiquidGlassWidgets.initialize();
+
+  runApp(
+    LiquidGlassWidgets.wrap(
+      brightnessResolver: Theme.maybeBrightnessOf,
+      child: const MyApp(),
+    ),
+  );
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     try {
@@ -56,7 +64,7 @@ class MyApp extends StatelessWidget {
           data: media.copyWith(textScaler: scale),
           child: DefaultTextStyle(
             style: DefaultTextStyle.of(context).style.copyWith(
-              decoration: TextDecoration.none,
+              decoration: TextDecoration.none,  
               decorationColor: Colors.transparent,
             ),
             child: child!,

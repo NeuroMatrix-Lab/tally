@@ -3,6 +3,7 @@ import '../models/record.dart';
 import '../models/staff.dart';
 import '../widgets/custom_date_picker.dart';
 import 'staff_selection_page.dart';
+import '../widgets/glass_controls.dart';
 
 class EditRecordDialog extends StatefulWidget {
   final Record record;
@@ -222,9 +223,9 @@ class _EditRecordDialogState extends State<EditRecordDialog> {
               ),
             ),
             actions: [
-              TextButton(
+              GlassTextAction(
+                label: '取消',
                 onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
               ),
             ],
           ),
@@ -277,34 +278,27 @@ class _EditRecordDialogState extends State<EditRecordDialog> {
               const SizedBox(height: 12),
               
               // 工作内容
-              TextField(
+              GlassField(
                 controller: _workContentController,
-                decoration: const InputDecoration(
-                  labelText: '工作内容',
-                  border: OutlineInputBorder(),
-                ),
+                hintText: '工作内容',
+                labelText: '工作内容',
               ),
               const SizedBox(height: 12),
-              
+
               // 金额
-              TextField(
+              GlassField(
                 controller: _amountController,
-                decoration: const InputDecoration(
-                  labelText: '金额',
-                  border: OutlineInputBorder(),
-                  prefixText: '¥',
-                ),
+                hintText: '金额',
+                labelText: '金额',
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: 12),
-              
+
               // 类别
-              TextField(
+              GlassField(
                 controller: _categoryController,
-                decoration: const InputDecoration(
-                  labelText: '类别',
-                  border: OutlineInputBorder(),
-                ),
+                hintText: '类别',
+                labelText: '类别',
               ),
               const SizedBox(height: 12),
               
@@ -320,16 +314,18 @@ class _EditRecordDialogState extends State<EditRecordDialog> {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton(
+                    child: GlassSecondaryButton(
+                      label: '取消',
+                      expanded: true,
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('取消'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton(
+                    child: GlassPrimaryButton(
+                      label: '保存',
                       onPressed: _saveChanges,
-                      child: const Text('保存'),
+                      height: 40,
                     ),
                   ),
                 ],

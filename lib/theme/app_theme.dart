@@ -287,6 +287,20 @@ class AppTheme {
         backgroundColor: scheme.surface,
         selectedItemColor: AppColors.blue,
         unselectedItemColor: scheme.onSurfaceVariant,
+        selectedIconTheme: const IconThemeData(size: 26),
+        unselectedIconTheme: const IconThemeData(size: 24),
+        selectedLabelStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
+        type: BottomNavigationBarType.fixed,
+        elevation: 0,
+        showSelectedLabels: true,
+        showUnselectedLabels: true,
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: scheme.surface,

@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/operation_log.dart';
@@ -450,80 +450,64 @@ class HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withValues(alpha: 0.22),
-                    Colors.white.withValues(alpha: 0.14),
-                  ],
-                ),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.28),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
-                    blurRadius: 22,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: BottomNavigationBar(
-                currentIndex: _currentIndex,
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                type: BottomNavigationBarType.fixed,
-                showSelectedLabels: true,
-                showUnselectedLabels: true,
-                selectedFontSize: 12,
-                unselectedFontSize: 11,
-                selectedItemColor: Colors.white,
-                unselectedItemColor: Colors.white.withValues(alpha: 0.72),
-                selectedLabelStyle: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                ),
-                unselectedLabelStyle: const TextStyle(
-                  fontWeight: FontWeight.w500,
-                ),
-                onTap: (index) {
-                  setState(() {
-                    _currentIndex = index;
-                  });
-                  _pageController.animateToPage(
-                    index,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                  );
-                },
-                items: const [
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.add_circle_outline),
-                    label: '记账',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.list),
-                    label: '查账',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.history),
-                    label: '操作记录',
-                  ),
-                ],
-              ),
-            ),
-          ),
+      bottomNavigationBar: GlassTabBar.bottom(
+        selectedIndex: _currentIndex,
+        onTabSelected: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+          _pageController.animateToPage(
+            index,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        },
+        selectedIconColor: AppColors.blue,
+        unselectedIconColor: Theme.of(context).colorScheme.onSurfaceVariant,
+        selectedLabelColor: AppColors.blue,
+        unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+        // 选中底块：比之前淡很多的主题色，不再整块发蓝
+        indicatorColor: Theme.of(context).brightness == Brightness.dark
+            ? Colors.white.withValues(alpha: 0.12)
+            : AppColors.blue.withValues(alpha: 0.10),
+        // 玻璃保留轻微色调和折射，避免“没颜色”
+        indicatorSettings: LiquidGlassSettings(
+          glassColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0x2AFFFFFF)
+              : const Color(0x222B7DE9),
+          thickness: 22,
+          refractiveIndex: 1.12,
+          lightIntensity: 0.7,
+          chromaticAberration: 0.05,
         ),
+        // high 会把选中层裁进指示块，避免整排图标叠影
+        maskingQuality: MaskingQuality.high,
+        magnification: 1.05,
+        iconSize: 24,
+        labelFontSize: 11,
+        selectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w500,
+        ),
+        tabs: const [
+          GlassTab(
+            icon: Icon(Icons.add_circle_outline),
+            activeIcon: Icon(Icons.add_circle),
+            label: '记账',
+          ),
+          GlassTab(
+            icon: Icon(Icons.list_alt_outlined),
+            activeIcon: Icon(Icons.list_alt),
+            label: '查账',
+          ),
+          GlassTab(
+            icon: Icon(Icons.history_outlined),
+            activeIcon: Icon(Icons.history),
+            label: '操作记录',
+          ),
+        ],
       ),
     );
   }

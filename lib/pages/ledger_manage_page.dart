@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../widgets/glass_controls.dart';
 
 class LedgerManagePage extends StatefulWidget {
   final List<String> ledgers;
@@ -33,27 +34,25 @@ class _LedgerManagePageState extends State<LedgerManagePage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('添加账本'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: '请输入账本名称',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
+        content: GlassField(
+   controller: controller,
+   hintText: '请输入账本名称',
+ autofocus: true,
         ),
         actions: [
-          TextButton(
+          GlassTextAction(
+            label: '取消',
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
           ),
-          ElevatedButton(
+          GlassPrimaryButton(
+            label: '添加',
             onPressed: () {
               final name = controller.text.trim();
               if (name.isNotEmpty) {
                 Navigator.pop(context, name);
               }
             },
-            child: const Text('添加'),
+            height: 40,
           ),
         ],
       ),
@@ -95,27 +94,25 @@ class _LedgerManagePageState extends State<LedgerManagePage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('编辑账本'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: '请输入新的账本名称',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
+        content: GlassField(
+   controller: controller,
+   hintText: '请输入新的账本名称',
+ autofocus: true,
         ),
         actions: [
-          TextButton(
+          GlassTextAction(
+            label: '取消',
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
           ),
-          ElevatedButton(
+          GlassPrimaryButton(
+            label: '保存',
             onPressed: () {
               final name = controller.text.trim();
               if (name.isNotEmpty && name != oldName) {
                 Navigator.pop(context, name);
               }
             },
-            child: const Text('保存'),
+            height: 40,
           ),
         ],
       ),
@@ -161,16 +158,15 @@ class _LedgerManagePageState extends State<LedgerManagePage> {
         title: const Text('确认删除'),
         content: Text('确定要删除账本"$name"吗？'),
         actions: [
-          TextButton(
+          GlassTextAction(
+            label: '取消',
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
           ),
-          ElevatedButton(
+          GlassSecondaryButton(
+            label: '删除',
+            danger: true,
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
-            child: const Text('删除'),
+            height: 40,
           ),
         ],
       ),
@@ -366,9 +362,8 @@ class _LedgerManagePageState extends State<LedgerManagePage> {
         ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: GlassFab(
         onPressed: _addLedger,
-        child: const Icon(Icons.add),
       ),
     );
   }

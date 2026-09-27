@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import '../widgets/custom_date_picker.dart';
+import '../widgets/glass_controls.dart';
 import '../services/app_time.dart';
 import '../services/api_service.dart';
 import '../window/immersive_window.dart';
@@ -230,32 +232,10 @@ class _AddRecordPageState extends State<AddRecordPage> {
   }
 
   Widget _buildLedgerSelector() {
-    return GestureDetector(
-      onTap: () {
-        _showLedgerOverlay();
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('账本', style: TextStyle(fontSize: 16)),
-            Row(
-              children: [
-                Text(
-                  widget.defaultLedger.isEmpty ? '选择账本' : widget.defaultLedger,
-                  style: const TextStyle(fontSize: 16),
-                ),
-                const Icon(Icons.arrow_drop_down),
-              ],
-            ),
-          ],
-        ),
-      ),
+    return GlassSelector(
+      value: widget.defaultLedger.isEmpty ? '选择账本' : widget.defaultLedger,
+      placeholder: widget.defaultLedger.isEmpty,
+      onTap: _showLedgerOverlay,
     );
   }
 
@@ -339,13 +319,54 @@ class _AddRecordPageState extends State<AddRecordPage> {
           ),
         ),
         actions: [
-          TextButton(
+          GlassTextAction(
+            label: '关闭',
             onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _showOptionPicker({
+    required String title,
+    required List<String> options,
+    required ValueChanged<String> onPick,
+  }) async {
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: options.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('暂无已有选项', style: TextStyle(color: Colors.grey)),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: options.length,
+                  itemBuilder: (context, index) {
+                    final option = options[index];
+                    return ListTile(
+                      title: Text(option),
+                      onTap: () => Navigator.pop(context, option),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          GlassTextAction(
+            label: '关闭',
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+    if (selected != null) {
+      onPick(selected);
+    }
   }
 
   Widget _buildAutocompleteField({
@@ -353,12 +374,14 @@ class _AddRecordPageState extends State<AddRecordPage> {
     required String hint,
     required TextEditingController controller,
     required List<String> options,
+    VoidCallback? onPick,
   }) {
     return _CustomAutocomplete(
       label: label,
       hint: hint,
       controller: controller,
       options: options,
+      onPick: onPick,
     );
   }
 
@@ -386,25 +409,10 @@ class _AddRecordPageState extends State<AddRecordPage> {
                 Expanded(child: _buildLedgerSelector()),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: GestureDetector(
+                  child: GlassSelector(
+                    value: DateFormat('yyyy-MM-dd').format(_selectedDate),
                     onTap: _selectDate,
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('日期', style: TextStyle(fontSize: 16)),
-                          Text(
-                            DateFormat('yyyy-MM-dd').format(_selectedDate),
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                        ],
-                      ),
-                    ),
+                    trailing: const Icon(Icons.calendar_today_outlined, size: 18),
                   ),
                 ),
               ],
@@ -415,6 +423,15 @@ class _AddRecordPageState extends State<AddRecordPage> {
               hint: '输入或选择类别',
               controller: _categoryController,
               options: widget.categories,
+              onPick: () => _showOptionPicker(
+                title: '选择类别',
+                options: widget.categories,
+                onPick: (value) {
+                  setState(() {
+                    _categoryController.text = value;
+                  });
+                },
+              ),
             ),
             const SizedBox(height: 16),
             _buildAutocompleteField(
@@ -422,77 +439,54 @@ class _AddRecordPageState extends State<AddRecordPage> {
               hint: '输入或选择工作内容',
               controller: _workContentController,
               options: widget.workContents,
-            ),
-            const SizedBox(height: 16),
-            GestureDetector(
-              onTap: _selectStaff,
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Icon(Icons.group, color: Colors.grey),
-                        ),
-                        const SizedBox(width: 12),
-                        Text('参与人员', style: const TextStyle(fontSize: 16)),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        Text(
-                          _selectedStaffIds.isEmpty
-                              ? '选择人员'
-                              : '已选择 ${_selectedStaffIds.length} 人',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: _selectedStaffIds.isEmpty
-                                ? Colors.grey
-                                : Colors.blue,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(
-                          Icons.arrow_forward_ios,
-                          size: 16,
-                          color: Colors.grey,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+              onPick: () => _showOptionPicker(
+                title: '选择工作内容',
+                options: widget.workContents,
+                onPick: (value) {
+                  setState(() {
+                    _workContentController.text = value;
+                  });
+                },
               ),
             ),
             const SizedBox(height: 16),
-            TextField(
+            GlassSelector(
+              value: _selectedStaffIds.isEmpty
+                  ? '选择人员'
+                  : '已选择 ${_selectedStaffIds.length} 人',
+              placeholder: _selectedStaffIds.isEmpty,
+              leading: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.group, size: 18, color: Colors.grey),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+              onTap: _selectStaff,
+            ),
+            const SizedBox(height: 16),
+            GlassField(
               controller: _amountController,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: const InputDecoration(
-                labelText: '金额',
-                border: OutlineInputBorder(),
-                prefixText: '¥ ',
-              ),
+              hintText: '金额',
             ),
             const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(8),
+            GlassContainer(
+              useOwnLayer: true,
+              shape: const LiquidRoundedRectangle(borderRadius: 16),
+              settings: LiquidGlassSettings(
+                glassColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white.withValues(alpha: 0.10)
+                    : Colors.white.withValues(alpha: 0.62),
+                thickness: 16,
+                refractiveIndex: 1.1,
+                lightIntensity: 0.5,
               ),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -508,10 +502,11 @@ class _AddRecordPageState extends State<AddRecordPage> {
                               onPressed: _removeImage,
                               tooltip: '删除图片',
                             ),
-                          ElevatedButton.icon(
+                          GlassSecondaryButton(
+                            label: '选择图片',
+                            height: 36,
+                            width: 100,
                             onPressed: _showImagePickerDialog,
-                            icon: const Icon(Icons.add_photo_alternate),
-                            label: const Text('选择图片'),
                           ),
                         ],
                       ),
@@ -521,7 +516,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
                     Padding(
                       padding: const EdgeInsets.only(top: 12),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(12),
                         child: Image.file(
                           _selectedImage!,
                           height: 200,
@@ -539,21 +534,10 @@ class _AddRecordPageState extends State<AddRecordPage> {
               ),
             ),
             const SizedBox(height: 24),
-            ElevatedButton(
+            GlassPrimaryButton(
+              label: '保存&上传',
               onPressed: _isUploading ? null : _saveRecord,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-              child: _isUploading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('保存&上传', style: TextStyle(fontSize: 18)),
+              height: 52,
             ),
           ],
         ),
@@ -568,12 +552,14 @@ class _CustomAutocomplete extends StatefulWidget {
   final String hint;
   final TextEditingController controller;
   final List<String> options;
+  final VoidCallback? onPick;
 
   const _CustomAutocomplete({
     required this.label,
     required this.hint,
     required this.controller,
     required this.options,
+    this.onPick,
   });
 
   @override
@@ -624,17 +610,27 @@ class _CustomAutocompleteState extends State<_CustomAutocomplete> {
             textEditingController.selection = widget.controller.selection;
           }
         }
-        return TextField(
+        return GlassField(
           controller: textEditingController,
           focusNode: focusNode,
-          decoration: InputDecoration(
-            labelText: widget.label,
-            border: const OutlineInputBorder(),
-            hintText: widget.hint,
-            suffixIcon: widget.options.isEmpty
-                ? null
-                : const Icon(Icons.arrow_drop_down),
-          ),
+          hintText: widget.hint,
+          labelText: widget.label,
+          suffixIcon: widget.onPick == null
+              ? (widget.options.isEmpty
+                    ? null
+                    : const Icon(Icons.arrow_drop_down))
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Text(
+                      '选择',
+                      style: TextStyle(fontSize: 14, color: Colors.black),
+                    ),
+                    SizedBox(width: 2),
+                    Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                  ],
+                ),
+          onSuffixTap: widget.onPick,
           onSubmitted: (_) => onSubmitted(),
         );
       },

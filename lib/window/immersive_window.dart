@@ -55,40 +55,51 @@ class PageTitleBar extends StatelessWidget {
       bottom: false,
       child: Padding(
         padding: padding,
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: theme.textTheme.titleLarge,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            ...actions,
-            if (isSyncing == true)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10),
-                child: SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else if (onSync != null && isServerConnected != null)
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed: onSync,
-                tooltip: isServerConnected! ? '已连接服务器' : '服务器未连接，点击同步',
-                icon: Icon(
-                  isServerConnected! ? Icons.cloud_done : Icons.cloud_off,
-                  size: 20,
-                  color: isServerConnected!
-                      ? AppColors.success
-                      : AppColors.error,
+        child: SizedBox(
+          // 固定行高，避免同步指示器在 spinner / 图标间切换时整页上下抽动
+          height: 48,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleLarge,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-          ],
+              ...actions,
+              if (isSyncing == true)
+                const SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Center(
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              else if (onSync != null && isServerConnected != null)
+                SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onSync,
+                    tooltip: isServerConnected! ? '已连接服务器' : '服务器未连接，点击同步',
+                    icon: Icon(
+                      isServerConnected! ? Icons.cloud_done : Icons.cloud_off,
+                      size: 20,
+                      color: isServerConnected!
+                          ? AppColors.success
+                          : AppColors.error,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

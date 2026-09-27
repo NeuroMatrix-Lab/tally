@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/staff.dart';
 import '../services/api_service.dart';
+import '../widgets/glass_controls.dart';
 
 class StaffSelectionPage extends StatefulWidget {
   final List<String> selectedStaffIds;
@@ -47,27 +48,25 @@ class _StaffSelectionPageState extends State<StaffSelectionPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('添加人员'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: '请输入人员姓名',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
+        content: GlassField(
+   controller: controller,
+   hintText: '请输入人员姓名',
+ autofocus: true,
         ),
         actions: [
-          TextButton(
+          GlassTextAction(
+            label: '取消',
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
           ),
-          ElevatedButton(
+          GlassPrimaryButton(
+            label: '添加',
             onPressed: () {
               final name = controller.text.trim();
               if (name.isNotEmpty) {
                 Navigator.pop(context, name);
               }
             },
-            child: const Text('添加'),
+            height: 40,
           ),
         ],
       ),
@@ -101,27 +100,25 @@ class _StaffSelectionPageState extends State<StaffSelectionPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('编辑人员'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: '请输入人员姓名',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
+        content: GlassField(
+   controller: controller,
+   hintText: '请输入人员姓名',
+ autofocus: true,
         ),
         actions: [
-          TextButton(
+          GlassTextAction(
+            label: '取消',
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
           ),
-          ElevatedButton(
+          GlassPrimaryButton(
+            label: '保存',
             onPressed: () {
               final name = controller.text.trim();
               if (name.isNotEmpty) {
                 Navigator.pop(context, name);
               }
             },
-            child: const Text('保存'),
+            height: 40,
           ),
         ],
       ),
@@ -156,14 +153,15 @@ class _StaffSelectionPageState extends State<StaffSelectionPage> {
         title: const Text('确认删除'),
         content: Text('确定要删除人员"${staff.name}"吗？'),
         actions: [
-          TextButton(
+          GlassTextAction(
+            label: '取消',
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
           ),
-          ElevatedButton(
+          GlassSecondaryButton(
+            label: '删除',
+            danger: true,
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
-            child: const Text('删除'),
+            height: 40,
           ),
         ],
       ),
@@ -313,9 +311,8 @@ class _StaffSelectionPageState extends State<StaffSelectionPage> {
         ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: GlassFab(
         onPressed: _addStaff,
-        child: const Icon(Icons.add),
       ),
     );
   }

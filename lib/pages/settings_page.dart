@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mysql1/mysql1.dart';
 import '../services/api_service.dart';
 import '../services/backend_client.dart';
+import '../widgets/glass_controls.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -380,19 +381,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  InputDecoration _denseDecoration({
-    required String labelText,
-    String? hintText,
-  }) {
-    return InputDecoration(
-      labelText: labelText,
-      hintText: hintText,
-      isDense: true,
-      border: const OutlineInputBorder(),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-    );
-  }
-
   Widget _buildBackendSettings() {
     final scheme = Theme.of(context).colorScheme;
     return Card(
@@ -443,30 +431,33 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(width: 8),
                 Expanded(
                   flex: 3,
-                  child: TextField(
-                    controller: _backendIpController,
-                    decoration: _denseDecoration(
-                      labelText: '服务器地址',
-                      hintText: 'tally.example.com',
-                    ),
-                    style: const TextStyle(fontSize: 13),
-                    keyboardType: TextInputType.text,
-                  ),
+                  child: GlassField(
+   controller: _backendIpController,
+   hintText: 'tally.example.com',
+   labelText: '服务器地址',
+   height: 40,
+   textStyle: const TextStyle(fontSize: 13),
+   keyboardType: TextInputType.text,
+ ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            TextField(
+            GlassField(
               controller: _backendPortController,
-              decoration: _denseDecoration(labelText: '端口', hintText: '443'),
-              style: const TextStyle(fontSize: 13),
+              hintText: '443',
+              labelText: '端口',
+              height: 40,
+              textStyle: const TextStyle(fontSize: 13),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 8),
-            TextField(
+            GlassField(
               controller: _backendPasswordController,
-              decoration: _denseDecoration(labelText: '访问密码', hintText: '可留空'),
-              style: const TextStyle(fontSize: 13),
+              hintText: '可留空',
+              labelText: '访问密码',
+              height: 40,
+              textStyle: const TextStyle(fontSize: 13),
               obscureText: true,
               keyboardType: TextInputType.text,
             ),
@@ -490,47 +481,48 @@ class _SettingsPageState extends State<SettingsPage> {
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            TextField(
+            GlassField(
               controller: _dbHostController,
-              decoration: _denseDecoration(
-                labelText: '数据库主机',
-                hintText: '192.168.1.100',
-              ),
-              style: const TextStyle(fontSize: 13),
+              hintText: '192.168.1.100',
+              labelText: '数据库主机',
+              height: 40,
+              textStyle: const TextStyle(fontSize: 13),
               keyboardType: TextInputType.text,
             ),
             const SizedBox(height: 8),
-            TextField(
+            GlassField(
               controller: _dbPortController,
-              decoration: _denseDecoration(labelText: '端口', hintText: '3306'),
-              style: const TextStyle(fontSize: 13),
+              hintText: '3306',
+              labelText: '端口',
+              height: 40,
+              textStyle: const TextStyle(fontSize: 13),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 8),
-            TextField(
+            GlassField(
               controller: _dbNameController,
-              decoration: _denseDecoration(
-                labelText: '数据库名称',
-                hintText: 'tally_db',
-              ),
-              style: const TextStyle(fontSize: 13),
+              hintText: 'tally_db',
+              labelText: '数据库名称',
+              height: 40,
+              textStyle: const TextStyle(fontSize: 13),
               keyboardType: TextInputType.text,
             ),
             const SizedBox(height: 8),
-            TextField(
+            GlassField(
               controller: _dbUserController,
-              decoration: _denseDecoration(
-                labelText: '用户名',
-                hintText: '数据库用户名',
-              ),
-              style: const TextStyle(fontSize: 13),
+              hintText: '数据库用户名',
+              labelText: '用户名',
+              height: 40,
+              textStyle: const TextStyle(fontSize: 13),
               keyboardType: TextInputType.text,
             ),
             const SizedBox(height: 8),
-            TextField(
+            GlassField(
               controller: _dbPasswordController,
-              decoration: _denseDecoration(labelText: '密码', hintText: '数据库密码'),
-              style: const TextStyle(fontSize: 13),
+              hintText: '数据库密码',
+              labelText: '密码',
+              height: 40,
+              textStyle: const TextStyle(fontSize: 13),
               obscureText: true,
               keyboardType: TextInputType.text,
             ),
@@ -628,65 +620,28 @@ class _SettingsPageState extends State<SettingsPage> {
               _buildDatabaseSettings(),
             const SizedBox(height: 12),
             if (_selectedMode != ConnectionMode.local)
-              OutlinedButton.icon(
+              GlassSecondaryButton(
+                label: _isLoading ? '测试中...' : '测试连接',
+                icon: Icons.wifi_tethering,
+                height: 40,
+                expanded: true,
                 onPressed: _isLoading ? null : _testConnection,
-                icon: _isLoading
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.wifi_tethering, size: 16),
-                label: Text(
-                  _isLoading ? '测试中...' : '测试连接',
-                  style: const TextStyle(fontSize: 13),
-                ),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 8,
-                    horizontal: 12,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
               ),
             if (_selectedMode != ConnectionMode.local)
               const SizedBox(height: 8),
-            ElevatedButton.icon(
+            GlassPrimaryButton(
+              label: _isLoading ? '保存中...' : '保存设置',
+              icon: Icons.save,
+              height: 44,
               onPressed: _isLoading ? null : _saveSettings,
-              icon: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save, size: 16),
-              label: Text(
-                _isLoading ? '保存中...' : '保存设置',
-                style: const TextStyle(fontSize: 13),
-              ),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 8,
-                  horizontal: 12,
-                ),
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
             ),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
+            GlassSecondaryButton(
+              label: '取消',
+              icon: Icons.cancel,
+              height: 40,
+              expanded: true,
               onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.cancel, size: 16),
-              label: const Text('取消', style: TextStyle(fontSize: 13)),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 8,
-                  horizontal: 12,
-                ),
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
             ),
             const SizedBox(height: 24),
             Text(
